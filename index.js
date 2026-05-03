@@ -2,12 +2,12 @@ import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
-// 初始化数据结构: { "ThemeName": { "AvatarID.png": "data:image/png;base64,..." } }
+// 初始化当前插件的配置项空间
 if (!extension_settings.avatarCroppedImages) {
     extension_settings.avatarCroppedImages = {};
 }
 
-// 获取酒馆中真正唯一识别的角色/Persona ID (即头像文件名)
+// 辅助函数：从 URL 提取纯净的 Avatar ID（即：角色或 Persona 唯一的代码文件名）
 function getAvatarIdFromSrc(src) {
     try {
         let cleanSrc = src.split('?')[0];
@@ -18,21 +18,10 @@ function getAvatarIdFromSrc(src) {
     }
 }
 
-// 智能获取当前 SillyTavern 正在使用的主题美化名称
+// 辅助函数：直接从酒馆界面的隐藏下拉框中，抓取当前真正使用的主题美化名称
 function getCurrentTheme() {
-    // 现代版本 ST 通常把主题写在 <html> 的 data-theme 属性上
-    const htmlTheme = document.documentElement.getAttribute('data-theme');
-    if (htmlTheme) return htmlTheme;
-
-    // 兼容部分特定主题扩展或老版本，从 css 链接中提取
-    const themeLink = document.querySelector('link[href*="css/themes/"]');
-    if (themeLink) {
-        const href = themeLink.getAttribute('href');
-        const match = href.match(/themes\/(.*?)\.css/);
-        if (match) return match[1];
-    }
-
-    return 'default';
+    const themeSelect = document.getElementById('themes');
+    return themeSelect ? themeSelect.value : 'default';
 }
 
 async function getBase64FromUrl(url) {
@@ -47,20 +36,18 @@ async function getBase64FromUrl(url) {
     });
 }
 
-// 核心：根据当前主题，应用保存过的头像。如果没有，则恢复默认。
+// 核心函数：动态生成 CSS
 function applyCroppedAvatars() {
-    const currentTheme = getCurrentTheme();
-    // 提取当前主题下保存的数据。如果没有，则为空对象 {}
-    const croppedData = extension_settings.avatarCroppedImages[currentTheme] || {};
+    const theme = getCurrentTheme();
+    const croppedData = extension_settings.avatarCroppedImages[theme] || {};
 
     let cssString = '';
     
-    // 如果当前主题下有剪裁数据，则生成针对这些特定 Avatar ID 的替换规则
+    // 如果当前主题下有保存过数据，才会生成对应的 CSS 覆盖规则
     for (const [avatarId, base64Image] of Object.entries(croppedData)) {
         const escapedId = avatarId.replace(/"/g, '\\"');
         const encodedId = encodeURIComponent(avatarId).replace(/"/g, '\\"');
 
-        // 仅当聊天流中的图片 src 匹配该 Avatar ID 时，才会被替换
         cssString += `
             #chat .avatar img[src*="${escapedId}"],
             #chat .avatar img[src*="${encodedId}"],
@@ -79,27 +66,26 @@ function applyCroppedAvatars() {
         document.head.appendChild(styleTag);
     }
     
-    // 如果 cssString 是空的（例如切换到了一个没保存过头像的主题）
-    // textContent 会被清空，浏览器会立刻移除 content: url() 覆盖，恢复原状！
+    // 这里的精髓：如果当前主题没有保存过任何剪裁数据，cssString 就是空的。
+    // 这行代码会立刻清空覆盖规则，所有头像瞬间恢复为酒馆原生的默认样式！
     styleTag.textContent = cssString;
 }
 
-// 监听主题变化：通过轮询获取真实 Theme，一旦改变立刻刷新 CSS
+// 轮询检查是否更换了美化主题，若更换则重新应用数据
 let lastTheme = getCurrentTheme();
 setInterval(() => {
     const currentTheme = getCurrentTheme();
     if (currentTheme !== lastTheme) {
         lastTheme = currentTheme;
-        applyCroppedAvatars(); // 切换主题时，应用或重置样式
+        applyCroppedAvatars(); // 主题一旦改变，立即刷新头像样式
     }
-}, 500);
+}, 1000);
 
-// 调用自带高级剪裁器
 async function triggerNativeCropPopup(imgSrc) {
     const avatarId = getAvatarIdFromSrc(imgSrc);
     const base64Original = await getBase64FromUrl(imgSrc);
 
-    // 呼出剪裁框
+    // 调用高级剪裁弹窗，参数留空去除标题文本
     const croppedImageBase64 = await callGenericPopup(
         '', 
         POPUP_TYPE.CROP, 
@@ -107,28 +93,26 @@ async function triggerNativeCropPopup(imgSrc) {
         { cropAspect: 1, cropImage: base64Original }
     );
 
-    // 如果用户保存了剪裁
     if (croppedImageBase64) {
-        const currentTheme = getCurrentTheme();
-        
-        if (!extension_settings.avatarCroppedImages[currentTheme]) {
-            extension_settings.avatarCroppedImages[currentTheme] = {};
+        const theme = getCurrentTheme(); // 获取当前真实主题
+        if (!extension_settings.avatarCroppedImages[theme]) {
+            extension_settings.avatarCroppedImages[theme] = {};
         }
 
-        // 绑定：Theme -> Avatar ID -> Base64
-        extension_settings.avatarCroppedImages[currentTheme][avatarId] = croppedImageBase64;
+        // 强绑定：主题名 + 角色/用户唯一标识ID = 剪裁后的 Base64 数据
+        extension_settings.avatarCroppedImages[theme][avatarId] = croppedImageBase64;
         
         saveSettingsDebounced();
-        applyCroppedAvatars(); // 立即应用到界面
+        applyCroppedAvatars(); 
         
         toastr.success('头像已保存');
     }
 }
 
-// 注入操作按钮
 function injectCropButton(zoomedDiv) {
     if (zoomedDiv.querySelector('#st-native-crop-btn')) return;
 
+    // 寻找控制栏
     const controlBar = zoomedDiv.querySelector('.panelControlBar');
     if (!controlBar) return;
 
@@ -141,12 +125,12 @@ function injectCropButton(zoomedDiv) {
         e.stopPropagation(); 
         const img = zoomedDiv.querySelector('img');
         if (img) {
-            zoomedDiv.click(); // 关闭放大预览图，让路给剪裁弹窗
+            zoomedDiv.click(); // 关闭放大预览
             await triggerNativeCropPopup(img.src);
         }
     });
 
-    // 插入在控制栏中
+    // 插入到关闭按钮前面
     const closeBtn = controlBar.querySelector('.dragClose');
     if (closeBtn) {
         controlBar.insertBefore(btn, closeBtn);
@@ -155,12 +139,9 @@ function injectCropButton(zoomedDiv) {
     }
 }
 
-// 启动入口
 jQuery(async () => {
-    // 页面加载时执行一次检测和应用
     applyCroppedAvatars();
 
-    // 监听放大图出现
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             mutation.addedNodes.forEach((node) => {
