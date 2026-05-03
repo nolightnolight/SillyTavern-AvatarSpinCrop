@@ -1,7 +1,6 @@
 import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
-// 引入酒馆自带的弹窗系统，里面内置了 Cropper.js 引擎
-import { callGenericPopup, POPUP_TYPE } from '../../../../popup.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
 // 初始化当前插件的配置项空间，用于存储剪裁后的 Base64 数据
 if (!extension_settings.avatarCroppedImages) {
@@ -80,7 +79,7 @@ async function triggerNativeCropPopup(imgSrc) {
     // 转换为 Base64
     const base64Original = await getBase64FromUrl(imgSrc);
 
-    // 调用酒馆内置弹窗：带九宫格、可缩放、支持鼠标拖拽，完美符合你的要求 (cropAspect: 1 强制 1:1 比例)
+    // 调用酒馆内置弹窗：带九宫格、可缩放、支持鼠标拖拽，强制 1:1 比例裁切
     const croppedImageBase64 = await callGenericPopup(
         '请调整头像显示部分 (滚轮缩放 / 拖拽移动)', 
         POPUP_TYPE.CROP, 
@@ -132,6 +131,7 @@ function injectCropButton(zoomedDiv) {
 jQuery(async () => {
     // 页面加载时立即应用当前主题的剪裁数据
     applyCroppedAvatars();
+    console.log('[AvatarCropper] Extension Loaded Successfully!');
 
     // 监听放大图片出现的动作
     const observer = new MutationObserver((mutations) => {
