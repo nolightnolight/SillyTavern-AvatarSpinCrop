@@ -1,118 +1,132 @@
-/* 修改器主窗口 */
-#st-ac-modal {
-    background-color: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.8));
-    backdrop-filter: blur(10px);
-    color: var(--SmartThemeBodyColor, #fff);
-    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.2));
-    border-radius: 10px;
-    padding: 20px;
-    width: 350px;
-    box-shadow: 0 4px 25px rgba(0,0,0,0.5);
+/* 放大预览界面的调整按钮 */
+#st-avatar-crop-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+    font-weight: bold;
+    transition: 0.2s;
     display: flex;
-    flex-direction: column;
     align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 }
 
-#st-ac-modal h3 {
+#st-avatar-crop-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+    transform: scale(1.05);
+}
+
+/* 裁剪调整弹窗遮罩 */
+#st-avatar-crop-modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 20000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+}
+
+/* 裁剪调整弹窗内容 */
+#st-avatar-crop-modal .popup-content {
+    background: var(--SmartThemeBodyColor, #1e1e1e);
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 10px;
+    padding: 20px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    color: var(--SmartThemeTextColor, #ddd);
+}
+
+#st-avatar-crop-modal h3 {
     margin-top: 0;
-    margin-bottom: 20px;
-    font-size: 1.2rem;
+    margin-bottom: 15px;
     text-align: center;
 }
 
-/* 预览圆形容器 (模拟酒馆聊天里的头像表现) */
-.st-ac-preview-wrapper {
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
+/* 裁剪预览框容器（自动继承酒馆的头像圆角设置） */
+#st-avatar-crop-preview-wrapper {
+    width: 250px;
+    height: 250px;
+    margin: 20px auto;
+    position: relative;
     overflow: hidden;
-    border: 3px solid var(--SmartThemeBorderColor, #888);
-    margin-bottom: 25px;
-    background-color: rgba(0,0,0,0.3);
-    flex-shrink: 0;
+    border: 2px solid var(--SmartThemeBorderColor, #888);
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    background: var(--SmartThemeBlurTintColor, #000);
 }
 
-#st-ac-preview {
+/* 预览图片本身 */
+#st-avatar-crop-preview-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transform-origin: center;
-    /* transition: transform 0.1s ease-out; */ /* 如果拖拽感觉卡可以启用 */
+    cursor: grab;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+#st-avatar-crop-preview-img:active {
+    cursor: grabbing;
 }
 
-/* 调节条区域 */
-.st-ac-controls {
-    width: 100%;
-    margin-bottom: 25px;
+/* 九宫格参考线 */
+.st-avatar-crop-grid {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; /* 让鼠标事件穿透到图片上 */
+    background-image:
+        linear-gradient(to right, transparent calc(33.33% - 1px), rgba(255,255,255,0.6) 33.33%, transparent calc(33.33% + 1px), transparent calc(66.66% - 1px), rgba(255,255,255,0.6) 66.66%, transparent calc(66.66% + 1px)),
+        linear-gradient(to bottom, transparent calc(33.33% - 1px), rgba(255,255,255,0.6) 33.33%, transparent calc(33.33% + 1px), transparent calc(66.66% - 1px), rgba(255,255,255,0.6) 66.66%, transparent calc(66.66% + 1px));
 }
 
-.st-ac-range-row {
+/* 控制面板 */
+.st-avatar-crop-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+.st-avatar-crop-controls label {
     display: flex;
     align-items: center;
-    margin-bottom: 12px;
+    justify-content: space-between;
+    font-size: 14px;
 }
-
-.st-ac-range-row label {
-    width: 100px;
-    font-weight: bold;
-    font-size: 0.9rem;
-    opacity: 0.9;
-}
-
-.st-ac-range-row input[type="range"] {
+.st-avatar-crop-controls input[type=range] {
     flex-grow: 1;
+    margin-left: 10px;
     cursor: pointer;
 }
 
-/* 底部按钮组 */
-.st-ac-buttons {
+/* 底部按钮 */
+.st-avatar-crop-buttons {
     display: flex;
     justify-content: space-between;
-    width: 100%;
     gap: 10px;
 }
-
-.st-ac-buttons .menu_button {
+.st-avatar-crop-buttons button {
     flex: 1;
-    text-align: center;
-    padding: 8px 0;
-    font-size: 0.9rem;
-}
-
-/* Persona 列表上的微型按钮 */
-.st-ac-persona-btn {
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
     cursor: pointer;
-    margin-left: 8px;
-    opacity: 0.5;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    font-size: 0.9em;
+    font-weight: bold;
+    background: var(--SmartThemeBlurTintColor, #444);
+    color: var(--SmartThemeTextColor, #fff);
+    transition: 0.2s;
 }
-
-.st-ac-persona-btn:hover {
-    opacity: 1;
-    transform: scale(1.2);
-    color: var(--SmartThemeButtonTextHoverColor, #fff);
+.st-avatar-crop-buttons button:hover {
+    filter: brightness(1.2);
 }
-
-/* 放大图片的悬浮剪裁按钮 */
-.st-ac-floating-btn {
-    position: fixed;
-    top: 30px;
-    right: 30px;
-    width: 45px;
-    height: 45px;
-    border-radius: 50% !important;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 999999; /* 必须比zoomed_avatar的z-index大 */
-    font-size: 1.2rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-    background-color: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.7)) !important;
-    color: var(--SmartThemeBodyColor, #fff);
-    transition: transform 0.2s ease;
-}
-
-.st-ac-floating-btn:hover {
-    transform: scale(1.15);
+#st-avatar-crop-save {
+    background: #2b7a2b; /* 绿色系保存按钮 */
 }
