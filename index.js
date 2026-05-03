@@ -2,12 +2,10 @@ import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
-// 初始化当前插件的配置项空间
 if (!extension_settings.avatarCroppedImages) {
     extension_settings.avatarCroppedImages = {};
 }
 
-// 辅助函数：从 URL 提取纯净的 Avatar ID（即：角色或 Persona 唯一的代码文件名）
 function getAvatarIdFromSrc(src) {
     try {
         let cleanSrc = src.split('?')[0];
@@ -18,7 +16,6 @@ function getAvatarIdFromSrc(src) {
     }
 }
 
-// 辅助函数：直接从酒馆界面的隐藏下拉框中，抓取当前真正使用的主题美化名称
 function getCurrentTheme() {
     const themeSelect = document.getElementById('themes');
     return themeSelect ? themeSelect.value : 'default';
@@ -36,14 +33,12 @@ async function getBase64FromUrl(url) {
     });
 }
 
-// 核心函数：动态生成 CSS
 function applyCroppedAvatars() {
     const theme = getCurrentTheme();
     const croppedData = extension_settings.avatarCroppedImages[theme] || {};
 
     let cssString = '';
     
-    // 如果当前主题下有保存过数据，才会生成对应的 CSS 覆盖规则
     for (const [avatarId, base64Image] of Object.entries(croppedData)) {
         const escapedId = avatarId.replace(/"/g, '\\"');
         const encodedId = encodeURIComponent(avatarId).replace(/"/g, '\\"');
@@ -66,18 +61,15 @@ function applyCroppedAvatars() {
         document.head.appendChild(styleTag);
     }
     
-    // 这里的精髓：如果当前主题没有保存过任何剪裁数据，cssString 就是空的。
-    // 这行代码会立刻清空覆盖规则，所有头像瞬间恢复为酒馆原生的默认样式！
     styleTag.textContent = cssString;
 }
 
-// 轮询检查是否更换了美化主题，若更换则重新应用数据
 let lastTheme = getCurrentTheme();
 setInterval(() => {
     const currentTheme = getCurrentTheme();
     if (currentTheme !== lastTheme) {
         lastTheme = currentTheme;
-        applyCroppedAvatars(); // 主题一旦改变，立即刷新头像样式
+        applyCroppedAvatars(); 
     }
 }, 1000);
 
@@ -85,21 +77,39 @@ async function triggerNativeCropPopup(imgSrc) {
     const avatarId = getAvatarIdFromSrc(imgSrc);
     const base64Original = await getBase64FromUrl(imgSrc);
 
-    // 调用高级剪裁弹窗，参数留空去除标题文本
-    const croppedImageBase64 = await callGenericPopup(
+    // 1. 去掉 cropAspect: 1 限制，解绑 1:1 比例，激活四侧边框的自由拉伸
+    // 注意这里没有用 await，是为了让代码继续往下走去修改 DOM
+    const popupPromise = callGenericPopup(
         '', 
         POPUP_TYPE.CROP, 
         '', 
-        { cropAspect: 1, cropImage: base64Original }
+        { cropImage: base64Original } 
     );
 
+    // 2. 核心魔法：轮询寻找弹窗中的 Cropper 实例，找到后修改内部模式
+    let attempts = 0;
+    const hackCropperInterval = setInterval(() => {
+        // Cropper.js 会把原始 img 加上 cropper-hidden 类
+        const img = document.querySelector('#dialogue_popup img.cropper-hidden');
+        if (img && img.cropper) {
+            // 将鼠标操作模式改为 'move'：这样在选取框外部点击拖拽时，就是平移图片，而不是画新框！
+            img.cropper.setDragMode('move');
+            clearInterval(hackCropperInterval);
+        }
+        attempts++;
+        if (attempts > 50) clearInterval(hackCropperInterval); // 防止死循环（5秒后放弃）
+    }, 100);
+
+    // 3. 等待用户完成裁剪点击“确定”
+    const croppedImageBase64 = await popupPromise;
+    clearInterval(hackCropperInterval); // 用户操作完毕，清理定时器
+
     if (croppedImageBase64) {
-        const theme = getCurrentTheme(); // 获取当前真实主题
+        const theme = getCurrentTheme(); 
         if (!extension_settings.avatarCroppedImages[theme]) {
             extension_settings.avatarCroppedImages[theme] = {};
         }
 
-        // 强绑定：主题名 + 角色/用户唯一标识ID = 剪裁后的 Base64 数据
         extension_settings.avatarCroppedImages[theme][avatarId] = croppedImageBase64;
         
         saveSettingsDebounced();
@@ -112,7 +122,6 @@ async function triggerNativeCropPopup(imgSrc) {
 function injectCropButton(zoomedDiv) {
     if (zoomedDiv.querySelector('#st-native-crop-btn')) return;
 
-    // 寻找控制栏
     const controlBar = zoomedDiv.querySelector('.panelControlBar');
     if (!controlBar) return;
 
@@ -125,12 +134,11 @@ function injectCropButton(zoomedDiv) {
         e.stopPropagation(); 
         const img = zoomedDiv.querySelector('img');
         if (img) {
-            zoomedDiv.click(); // 关闭放大预览
+            zoomedDiv.click(); 
             await triggerNativeCropPopup(img.src);
         }
     });
 
-    // 插入到关闭按钮前面
     const closeBtn = controlBar.querySelector('.dragClose');
     if (closeBtn) {
         controlBar.insertBefore(btn, closeBtn);
