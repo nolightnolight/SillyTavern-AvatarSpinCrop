@@ -1,4 +1,4 @@
-import { extension_settings, getContext } from '../../../../extensions.js';
+import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 
 const extensionName = 'AvatarCropperMod';
