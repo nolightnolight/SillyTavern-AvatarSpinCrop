@@ -3,6 +3,7 @@ import { saveSettingsDebounced } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
 // 初始化数据结构
+// 选项变量名变更为 avatarClickZoomEnabled，以更符合实际控制的功能
 if (extension_settings.avatarClickZoomEnabled === undefined) extension_settings.avatarClickZoomEnabled = false;
 if (!extension_settings.avatarCroppedImages) extension_settings.avatarCroppedImages = {};
 if (!extension_settings.altAvatars) extension_settings.altAvatars = {};
@@ -68,6 +69,24 @@ async function getBase64FromUrl(url) {
     });
 }
 
+// 核心修复函数：在用户通过酒馆原生功能更换底层头像时，清空相关缓存
+function clearCropCacheAndResetSelection(avatarId) {
+    if (extension_settings.avatarCroppedImages) {
+        for (const t of Object.keys(extension_settings.avatarCroppedImages)) {
+            if (extension_settings.avatarCroppedImages[t] && extension_settings.avatarCroppedImages[t][avatarId]) {
+                delete extension_settings.avatarCroppedImages[t][avatarId];
+            }
+        }
+    }
+    // 底层原图换了，解除对替身卡面的选择，展示新原图
+    if (extension_settings.altAvatars && extension_settings.altAvatars[avatarId]) {
+        extension_settings.altAvatars[avatarId].selected = null;
+    }
+    saveSettingsDebounced();
+    applyAltAvatars();
+    applyCroppedAvatars();
+}
+
 // ======================== CSS 生成引擎 ========================
 
 function applyAltAvatars() {
@@ -108,21 +127,15 @@ function applyCroppedAvatars() {
     const croppedData = extension_settings.avatarCroppedImages[theme] || {};
     let cssString = '';
     
-    // 全局开启，不受开关限制
+    // 全局开启，不再受开关限制
     for (const [avatarId, base64Image] of Object.entries(croppedData)) {
         if (avatarId === 'thumbnail') continue;
 
         const escapedId = avatarId.replace(/"/g, '\\"');
         const encodedId = encodeURIComponent(avatarId).replace(/"/g, '\\"');
-        
-        // 修复：补全所有选择器，确保 #avatar_load_preview 和 zoomed_avatar 都能覆盖到剪裁结果
         cssString += `
             .avatar img[src*="${escapedId}"],
-            .avatar img[src*="${encodedId}"],
-            #avatar_load_preview[src*="${escapedId}"],
-            #avatar_load_preview[src*="${encodedId}"],
-            .zoomed_avatar img[src*="${escapedId}"],
-            .zoomed_avatar img[src*="${encodedId}"] {
+            .avatar img[src*="${encodedId}"] {
                 content: url("${base64Image}") !important;
                 object-fit: cover !important;
             }
@@ -149,6 +162,7 @@ function updateClickZoomState() {
             pointerStyle.id = 'st-avatar-crop-pointer-events';
             document.head.appendChild(pointerStyle);
         }
+        // 最高优先级的点击穿透
         pointerStyle.textContent = `
             #chat .mes .mesAvatarWrapper .avatar, 
             #chat .mes .mesAvatarWrapper .avatar img {
@@ -192,6 +206,7 @@ async function openAltAvatarPanel() {
                     <div class="menu_button menu_button_icon margin0" id="btn-alt-delete-confirm" title="确认删除" style="display:none;"><i class="fa-solid fa-check"></i> 确认删除 (0)</div>
                 </div>
             </div>
+            <!-- 支持多选的 input -->
             <input type="file" id="input-alt-upload" style="display:none;" accept="image/*" multiple>
             <div class="alt-avatar-grid" id="grid-alt-avatars"></div>
         </div>
@@ -216,8 +231,7 @@ async function openAltAvatarPanel() {
             if(itemsToDelete.size > 0) {
                 btnDeleteConfirm.style.color = '#ff4444';
             } else {
-                // 修改为 SmartThemeBodyColor
-                btnDeleteConfirm.style.color = 'var(--SmartThemeBodyColor, #fff)';
+                btnDeleteConfirm.style.color = 'var(--SmartThemeTextColor, #fff)';
             }
         }
 
@@ -250,16 +264,15 @@ async function openAltAvatarPanel() {
         
         function selectAvatar(index) {
             if (isDeleteMode) return;
+            
+            // 核心修复：如果点击的本身就是当前选中的卡面，直接拦截拦截拦截！防止清空已有剪裁缓存！
+            if (data.selected === index) return;
+            
             data.selected = index;
             
-            // 核心修复：清理该角色在【所有主题】下的剪裁缓存
-            // 因为底图变了，旧的剪裁必定失效
-            if (extension_settings.avatarCroppedImages) {
-                for (const t of Object.keys(extension_settings.avatarCroppedImages)) {
-                    if (extension_settings.avatarCroppedImages[t]) {
-                        delete extension_settings.avatarCroppedImages[t][avatarId];
-                    }
-                }
+            const theme = getCurrentTheme();
+            if (extension_settings.avatarCroppedImages && extension_settings.avatarCroppedImages[theme]) {
+                delete extension_settings.avatarCroppedImages[theme][avatarId];
             }
             
             saveSettingsDebounced();
@@ -385,6 +398,7 @@ async function triggerNativeCropPopup(imgSrc) {
 }
 
 function injectCropButton(zoomedDiv) {
+    // 移除了开关控制，剪裁按钮全局常驻
     if (zoomedDiv.querySelector('#st-native-crop-btn')) return;
 
     const controlBar = zoomedDiv.querySelector('.panelControlBar');
@@ -408,6 +422,40 @@ function injectCropButton(zoomedDiv) {
     if (closeBtn) controlBar.insertBefore(btn, closeBtn);
     else controlBar.appendChild(btn);
 }
+
+// 监听原生上传行为：当用户在侧边栏或 Persona 面板上传并覆盖原图时，彻底清空由于同名造成的卡死剪裁缓存
+document.body.addEventListener('change', (e) => {
+    // 1. User 头像上传 (Persona)
+    if (e.target && e.target.id === 'avatar_upload_file') {
+        setTimeout(() => {
+            const overwriteInput = document.getElementById('avatar_upload_overwrite');
+            let avatarId = null;
+            if (overwriteInput && overwriteInput.value) {
+                avatarId = getAvatarIdFromSrc(overwriteInput.value);
+            } else {
+                const selectedPersona = document.querySelector('#user_avatar_block .avatar-container.selected');
+                if (selectedPersona) {
+                    avatarId = selectedPersona.getAttribute('data-avatar-id');
+                }
+            }
+            if (avatarId && avatarId !== 'thumbnail') {
+                clearCropCacheAndResetSelection(avatarId);
+            }
+        }, 200); // 留给酒馆后端更新的时间
+    }
+    // 2. 角色头像上传 (Character)
+    else if (e.target && e.target.id === 'add_avatar_button') {
+        setTimeout(() => {
+            const previewImg = document.getElementById('avatar_load_preview');
+            if (previewImg) {
+                const avatarId = getAvatarIdFromSrc(previewImg.getAttribute('src') || '');
+                if (avatarId && avatarId !== 'thumbnail') {
+                    clearCropCacheAndResetSelection(avatarId);
+                }
+            }
+        }, 200);
+    }
+});
 
 let lastTheme = getCurrentTheme();
 
