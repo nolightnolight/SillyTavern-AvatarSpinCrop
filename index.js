@@ -185,7 +185,7 @@ async function openAltAvatarPanel() {
                 <div style="display:flex; gap:10px; align-items:center;">
                     <div class="menu_button menu_button_icon margin0" id="btn-alt-upload" title="上传图片"><i class="fa-solid fa-upload"></i></div>
                     <div class="menu_button menu_button_icon margin0" id="btn-alt-manage" title="管理列表"><i class="fa-solid fa-trash-can"></i></div>
-                    <div class="menu_button menu_button_icon margin0" id="btn-alt-delete-confirm" title="确认删除" style="display:none;"><i class="fa-solid fa-check"></i> 确认删除（0）</div>
+                    <div class="menu_button menu_button_icon margin0" id="btn-alt-delete-confirm" title="确认删除" style="display:none;"><i class="fa-solid fa-check"></i> 确认删除 (0)</div>
                 </div>
             </div>
             <!-- 支持多选的 input -->
@@ -209,7 +209,7 @@ async function openAltAvatarPanel() {
         let itemsToDelete = new Set();
         
         function updateDeleteConfirmBtn() {
-            btnDeleteConfirm.innerHTML = `<i class="fa-solid fa-check"></i> 确认删除（${itemsToDelete.size}）`;
+            btnDeleteConfirm.innerHTML = `<i class="fa-solid fa-check"></i> 确认删除 (${itemsToDelete.size})`;
             if(itemsToDelete.size > 0) {
                 btnDeleteConfirm.style.color = '#ff4444';
             } else {
