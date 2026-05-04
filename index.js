@@ -2,7 +2,7 @@ import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
-// 初始化设置空间
+// 初始化数据结构
 if (extension_settings.avatarCropEnabled === undefined) extension_settings.avatarCropEnabled = false;
 if (!extension_settings.avatarCroppedImages) extension_settings.avatarCroppedImages = {};
 if (!extension_settings.altAvatars) extension_settings.altAvatars = {};
@@ -22,7 +22,7 @@ function getCurrentTheme() {
     return themeSelect ? themeSelect.value : 'default';
 }
 
-// 图片压缩器：防止用户上传巨大图片挤爆 localstorage，限制最大分辨率为 800x800，并转化为高压 JPEG
+// 智能图像压缩：防止挤爆缓存，最大限制为 800x800 的 JPG
 async function resizeImageToBase64(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -44,7 +44,7 @@ async function resizeImageToBase64(file) {
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', 0.85)); // 使用 JPG 压缩以节省空间
+                resolve(canvas.toDataURL('image/jpeg', 0.85)); 
             };
             img.src = e.target.result;
         };
@@ -52,7 +52,6 @@ async function resizeImageToBase64(file) {
     });
 }
 
-// 根据 Base64 / URL 获取资源
 async function getBase64FromUrl(url) {
     if (url.startsWith('data:image')) return url;
     const data = await fetch(url);
@@ -64,7 +63,8 @@ async function getBase64FromUrl(url) {
     });
 }
 
-// 渲染替换卡面 CSS (覆盖原图)
+// ======================== CSS 生成引擎 ========================
+
 function applyAltAvatars() {
     let cssString = '';
     for (const [avatarId, data] of Object.entries(extension_settings.altAvatars)) {
@@ -87,7 +87,6 @@ function applyAltAvatars() {
             `;
         }
     }
-
     let styleTag = document.getElementById('custom-alt-avatar-style');
     if (!styleTag) {
         styleTag = document.createElement('style');
@@ -97,7 +96,6 @@ function applyAltAvatars() {
     styleTag.textContent = cssString;
 }
 
-// 渲染剪裁头像 CSS (拥有最高优先级覆盖)
 function applyCroppedAvatars() {
     const theme = getCurrentTheme();
     const croppedData = extension_settings.avatarCroppedImages[theme] || {};
@@ -116,7 +114,6 @@ function applyCroppedAvatars() {
             }
         `;
     }
-
     let styleTag = document.getElementById('custom-avatar-crop-style');
     if (!styleTag) {
         styleTag = document.createElement('style');
@@ -126,11 +123,10 @@ function applyCroppedAvatars() {
     styleTag.textContent = cssString;
 }
 
-// 刷新状态：控制 CSS 和 UI 的显隐
 function updateAvatarFeaturesState() {
     const isEnabled = !!extension_settings.avatarCropEnabled;
 
-    // 1. 头像点击透传最高优先 CSS
+    // 1. 头像点击穿透 (强制优先级)
     let pointerStyle = document.getElementById('st-avatar-crop-pointer-events');
     if (isEnabled) {
         if (!pointerStyle) {
@@ -148,23 +144,22 @@ function updateAvatarFeaturesState() {
         pointerStyle.remove();
     }
 
-    // 2. 隐藏或清除替换卡面按钮
+    // 2. 显示/隐藏 替换卡面按钮
     const altBtn = document.getElementById('st-alt-avatar-btn');
     if (altBtn) altBtn.style.display = isEnabled ? 'flex' : 'none';
 
-    // 3. 应用或清空展示数据
+    // 3. 渲染数据
     if (isEnabled) {
         applyAltAvatars();
         applyCroppedAvatars();
     } else {
-        const cropStyle = document.getElementById('custom-avatar-crop-style');
-        if (cropStyle) cropStyle.textContent = '';
-        const altStyle = document.getElementById('custom-alt-avatar-style');
-        if (altStyle) altStyle.textContent = '';
+        if (document.getElementById('custom-avatar-crop-style')) document.getElementById('custom-avatar-crop-style').textContent = '';
+        if (document.getElementById('custom-alt-avatar-style')) document.getElementById('custom-alt-avatar-style').textContent = '';
     }
 }
 
-// 打开替换卡面面板
+// ======================== 替换卡面面板 ========================
+
 async function openAltAvatarPanel() {
     const previewImg = document.getElementById('avatar_load_preview');
     if (!previewImg || !previewImg.src) {
@@ -194,9 +189,10 @@ async function openAltAvatarPanel() {
     
     callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, large: true });
     
-    // 等待 DOM 渲染后绑定事件
     setTimeout(() => {
         const grid = document.getElementById('grid-alt-avatars');
+        if(!grid) return;
+
         const btnUpload = document.getElementById('btn-alt-upload');
         const btnManage = document.getElementById('btn-alt-manage');
         const inputUpload = document.getElementById('input-alt-upload');
@@ -205,28 +201,19 @@ async function openAltAvatarPanel() {
         function renderGrid() {
             grid.innerHTML = '';
             
-            // 渲染默认原图
             const origDiv = document.createElement('div');
             origDiv.className = 'alt-avatar-item original-item' + (data.selected === null ? ' selected' : '');
-            origDiv.innerHTML = `<img src="${originalSrc}" title="原卡面">`;
+            origDiv.innerHTML = `<img src="${originalSrc}" title="默认卡面">`;
             origDiv.onclick = () => selectAvatar(null);
             grid.appendChild(origDiv);
             
-            // 渲染所有上传的卡面
             data.images.forEach((b64, index) => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'alt-avatar-item' + (data.selected === index ? ' selected' : '');
-                itemDiv.innerHTML = `
-                    <img src="${b64}">
-                    <div class="delete-btn" title="删除图片"><i class="fa-solid fa-xmark"></i></div>
-                `;
+                itemDiv.innerHTML = `<img src="${b64}"><div class="delete-btn" title="删除图片"><i class="fa-solid fa-xmark"></i></div>`;
                 itemDiv.onclick = (e) => {
-                    if (isDeleteMode) {
-                        e.stopPropagation();
-                        deleteAvatar(index);
-                    } else {
-                        selectAvatar(index);
-                    }
+                    if (isDeleteMode) { e.stopPropagation(); deleteAvatar(index); } 
+                    else { selectAvatar(index); }
                 };
                 grid.appendChild(itemDiv);
             });
@@ -236,7 +223,7 @@ async function openAltAvatarPanel() {
             if (isDeleteMode) return;
             data.selected = index;
             
-            // 当更换底层卡面时，清空当前主题的剪裁缓存，防止逻辑冲突
+            // 清理对应剪裁缓存以避免冲突
             const theme = getCurrentTheme();
             if (extension_settings.avatarCroppedImages && extension_settings.avatarCroppedImages[theme]) {
                 delete extension_settings.avatarCroppedImages[theme][avatarId];
@@ -250,10 +237,10 @@ async function openAltAvatarPanel() {
         
         function deleteAvatar(index) {
             if (data.selected === index) {
-                data.selected = null; // 删除了当前正在使用的，回退到原卡面
+                data.selected = null;
                 applyAltAvatars();
             } else if (data.selected > index) {
-                data.selected -= 1; // 修正索引
+                data.selected -= 1;
             }
             data.images.splice(index, 1);
             saveSettingsDebounced();
@@ -275,19 +262,20 @@ async function openAltAvatarPanel() {
             data.images.push(b64);
             saveSettingsDebounced();
             renderGrid();
-            inputUpload.value = ''; // 允许重复选择同名文件
+            inputUpload.value = ''; 
         };
         
         renderGrid();
     }, 100);
 }
 
-// 调用原生裁剪弹窗
+// ======================== 原生剪裁弹窗 ========================
+
 async function triggerNativeCropPopup(imgSrc) {
     const avatarId = getAvatarIdFromSrc(imgSrc);
     let base64Original;
 
-    // 智能识别：优先检查是否启用了“替换卡面”，如果有，则对替换后的卡面进行剪裁！
+    // 智能识别：优先剪裁已替换的卡面
     if (extension_settings.altAvatars[avatarId] && extension_settings.altAvatars[avatarId].selected !== null) {
         const altData = extension_settings.altAvatars[avatarId];
         base64Original = altData.images[altData.selected];
@@ -295,12 +283,7 @@ async function triggerNativeCropPopup(imgSrc) {
         base64Original = await getBase64FromUrl(imgSrc);
     }
 
-    const cropPromise = callGenericPopup(
-        '', 
-        POPUP_TYPE.CROP, 
-        '', 
-        { cropAspect: 0, cropImage: base64Original }
-    );
+    const cropPromise = callGenericPopup('', POPUP_TYPE.CROP, '', { cropAspect: 0, cropImage: base64Original });
 
     setTimeout(() => {
         const cropperImg = document.querySelector('#dialogue_popup .cropper-hidden');
@@ -315,10 +298,7 @@ async function triggerNativeCropPopup(imgSrc) {
 
     if (croppedImageBase64) {
         const theme = getCurrentTheme(); 
-        if (!extension_settings.avatarCroppedImages[theme]) {
-            extension_settings.avatarCroppedImages[theme] = {};
-        }
-
+        if (!extension_settings.avatarCroppedImages[theme]) extension_settings.avatarCroppedImages[theme] = {};
         extension_settings.avatarCroppedImages[theme][avatarId] = croppedImageBase64;
         
         saveSettingsDebounced();
@@ -327,54 +307,6 @@ async function triggerNativeCropPopup(imgSrc) {
     }
 }
 
-// 轮询注入 DOM 组件（防止被酒馆刷新掉）
-setInterval(() => {
-    // 主题变更监听
-    const currentTheme = getCurrentTheme();
-    if (currentTheme !== lastTheme) {
-        lastTheme = currentTheme;
-        if (extension_settings.avatarCropEnabled) {
-            applyCroppedAvatars(); 
-        }
-    }
-
-    // 注入底层功能开关（在设置界面底部）
-    const targetContainer = document.querySelector("#UI-Theme-Block > div.flex-container.flexFlowColumn.flexNoGap > div.flex-container.flexFlowColumn");
-    if (targetContainer && !document.getElementById('st-avatar-features-toggle-container')) {
-        const container = document.createElement('div');
-        container.id = 'st-avatar-features-toggle-container';
-        container.className = 'flex-container alignItemsCenter';
-        const isEnabled = !!extension_settings.avatarCropEnabled;
-        container.innerHTML = `
-            <label class="checkbox_label" title="开启后允许点击头像进行裁剪，并在角色栏提供卡面替换功能">
-                <input id="st-avatar-features-toggle" type="checkbox" ${isEnabled ? 'checked' : ''}>
-                <span>启用头像剪裁与替换卡面功能</span>
-            </label>
-        `;
-        targetContainer.appendChild(container);
-        document.getElementById('st-avatar-features-toggle').addEventListener('change', (e) => {
-            extension_settings.avatarCropEnabled = e.target.checked;
-            saveSettingsDebounced();
-            updateAvatarFeaturesState();
-        });
-    }
-
-    // 注入“替换卡面”按钮
-    if (extension_settings.avatarCropEnabled) {
-        const avatarControls = document.querySelector('#avatar_controls > div');
-        if (avatarControls && !document.getElementById('st-alt-avatar-btn')) {
-            const btn = document.createElement('div');
-            btn.id = 'st-alt-avatar-btn';
-            btn.className = 'menu_button';
-            btn.innerHTML = '<i class="fa-solid fa-images"></i> 替换卡面';
-            btn.title = '为当前角色管理并替换全新的卡面图片';
-            btn.addEventListener('click', openAltAvatarPanel);
-            avatarControls.prepend(btn); // 插入最左侧
-        }
-    }
-}, 1000);
-
-// 注入放大预览面板中的剪裁按钮
 function injectCropButton(zoomedDiv) {
     if (!extension_settings.avatarCropEnabled) return;
     if (zoomedDiv.querySelector('#st-native-crop-btn')) return;
@@ -385,7 +317,7 @@ function injectCropButton(zoomedDiv) {
     const btn = document.createElement('div');
     btn.id = 'st-native-crop-btn';
     btn.innerHTML = '<i class="fa-solid fa-crop-simple"></i>';
-    btn.title = '高级剪裁头像';
+    btn.title = '剪裁头像';
 
     btn.addEventListener('click', async (e) => {
         e.stopPropagation(); 
@@ -401,8 +333,65 @@ function injectCropButton(zoomedDiv) {
     else controlBar.appendChild(btn);
 }
 
+// ======================== 安全 DOM 注入轮询引擎 ========================
+
+let lastTheme = getCurrentTheme();
+
+setInterval(() => {
+    // 1. 监听主题变化
+    const currentTheme = getCurrentTheme();
+    if (currentTheme !== lastTheme) {
+        lastTheme = currentTheme;
+        if (extension_settings.avatarCropEnabled) applyCroppedAvatars(); 
+    }
+
+    // 2. 注入总开关 (精准定位到 index.html 中对应的区域)
+    try {
+        const targetContainer = document.querySelector('div[name="AvatarAndChatDisplay"]');
+        if (targetContainer && !document.getElementById('st-avatar-features-toggle-container')) {
+            const container = document.createElement('div');
+            container.id = 'st-avatar-features-toggle-container';
+            container.className = 'flex-container alignItemsBaseline'; // 匹配原生风格
+            
+            const isEnabled = !!extension_settings.avatarCropEnabled;
+            container.innerHTML = `
+                <span data-i18n="Avatar Features">头像管理:</span>
+                <label class="checkbox_label flex1 margin0" title="开启后允许点击头像进行裁剪，并在角色栏提供卡面替换功能">
+                    <input id="st-avatar-features-toggle" type="checkbox" ${isEnabled ? 'checked' : ''}>
+                    <span>启用头像剪裁与替换卡面功能</span>
+                </label>
+            `;
+            targetContainer.appendChild(container); // 安全追加到末尾
+            
+            document.getElementById('st-avatar-features-toggle').addEventListener('change', (e) => {
+                extension_settings.avatarCropEnabled = e.target.checked;
+                saveSettingsDebounced();
+                updateAvatarFeaturesState();
+            });
+        }
+    } catch (e) { /* 防止抛出异常破坏酒馆原生进程 */ }
+
+    // 3. 注入“替换卡面”按钮 (精确插入到下方按钮栏左侧)
+    try {
+        if (extension_settings.avatarCropEnabled) {
+            const avatarControls = document.querySelector('#avatar_controls .form_create_bottom_buttons_block');
+            if (avatarControls && !document.getElementById('st-alt-avatar-btn')) {
+                const btn = document.createElement('div');
+                btn.id = 'st-alt-avatar-btn';
+                btn.className = 'menu_button fa-solid fa-images';
+                btn.title = '替换卡面 (为当前角色独立管理新头像)';
+                btn.addEventListener('click', openAltAvatarPanel);
+                
+                // 插入最左侧
+                avatarControls.prepend(btn);
+            }
+        }
+    } catch (e) {}
+}, 1000);
+
 jQuery(async () => {
     updateAvatarFeaturesState();
+    console.log('[AvatarCropper] Successfully Loaded with Safety Checks.');
 
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
