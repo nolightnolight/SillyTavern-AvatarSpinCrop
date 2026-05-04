@@ -1,5 +1,5 @@
 /* =========================================
-   你提供的 UI 样式：控制栏按钮
+   UI 样式：控制栏按钮
    ========================================= */
 .zoomed_avatar .panelControlBar .drag-grabber,
 .zoomed_avatar .panelControlBar .dragClose,
@@ -55,12 +55,6 @@ body .panelControlBar {
 /* =========================================
    替换卡面（Alt Avatars）面板 UI
    ========================================= */
-/* 新增的控制栏左侧按钮 */
-#st-alt-avatar-btn {
-    margin-right: auto !important; /* 强制靠左 */
-    color: #4CAF50; /* 给予少许主题色区分 */
-}
-
 #st-alt-avatar-panel .alt-avatar-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
@@ -83,18 +77,19 @@ body .panelControlBar {
     width: 100%; height: 100%; object-fit: cover; 
 }
 
-#st-alt-avatar-panel .delete-btn {
-    display: none; position: absolute;
-    top: 5px; right: 5px;
-    background: rgba(255, 50, 50, 0.9);
-    color: white; border-radius: 50%;
-    width: 28px; height: 28px;
-    text-align: center; line-height: 28px;
-    font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+/* 多选删除模式的遮罩与图标 */
+#st-alt-avatar-panel .alt-avatar-item.to-delete {
+    border-color: #ff4444;
+    opacity: 0.6;
 }
-#st-alt-avatar-panel .delete-btn:hover { background: red; transform: scale(1.1); }
-
-/* 管理模式时，显示删除按钮 (第一张原图除外) */
-#st-alt-avatar-panel .alt-avatar-grid.delete-mode .alt-avatar-item:not(.original-item) .delete-btn {
-    display: block;
+#st-alt-avatar-panel .alt-avatar-item.to-delete::after {
+    content: '\f00d'; /* font-awesome 的 fa-xmark */
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 3em;
+    color: #ff4444;
+    text-shadow: 0 0 10px #000;
 }
