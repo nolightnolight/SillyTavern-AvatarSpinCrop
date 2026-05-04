@@ -3,7 +3,6 @@ import { saveSettingsDebounced } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
 // 初始化数据结构
-// 选项变量名变更为 avatarClickZoomEnabled，以更符合实际控制的功能
 if (extension_settings.avatarClickZoomEnabled === undefined) extension_settings.avatarClickZoomEnabled = false;
 if (!extension_settings.avatarCroppedImages) extension_settings.avatarCroppedImages = {};
 if (!extension_settings.altAvatars) extension_settings.altAvatars = {};
@@ -109,15 +108,21 @@ function applyCroppedAvatars() {
     const croppedData = extension_settings.avatarCroppedImages[theme] || {};
     let cssString = '';
     
-    // 全局开启，不再受开关限制
+    // 全局开启，不受开关限制
     for (const [avatarId, base64Image] of Object.entries(croppedData)) {
         if (avatarId === 'thumbnail') continue;
 
         const escapedId = avatarId.replace(/"/g, '\\"');
         const encodedId = encodeURIComponent(avatarId).replace(/"/g, '\\"');
+        
+        // 修复：补全所有选择器，确保 #avatar_load_preview 和 zoomed_avatar 都能覆盖到剪裁结果
         cssString += `
             .avatar img[src*="${escapedId}"],
-            .avatar img[src*="${encodedId}"] {
+            .avatar img[src*="${encodedId}"],
+            #avatar_load_preview[src*="${escapedId}"],
+            #avatar_load_preview[src*="${encodedId}"],
+            .zoomed_avatar img[src*="${escapedId}"],
+            .zoomed_avatar img[src*="${encodedId}"] {
                 content: url("${base64Image}") !important;
                 object-fit: cover !important;
             }
@@ -144,7 +149,6 @@ function updateClickZoomState() {
             pointerStyle.id = 'st-avatar-crop-pointer-events';
             document.head.appendChild(pointerStyle);
         }
-        // 最高优先级的点击穿透
         pointerStyle.textContent = `
             #chat .mes .mesAvatarWrapper .avatar, 
             #chat .mes .mesAvatarWrapper .avatar img {
@@ -188,7 +192,6 @@ async function openAltAvatarPanel() {
                     <div class="menu_button menu_button_icon margin0" id="btn-alt-delete-confirm" title="确认删除" style="display:none;"><i class="fa-solid fa-check"></i> 确认删除 (0)</div>
                 </div>
             </div>
-            <!-- 支持多选的 input -->
             <input type="file" id="input-alt-upload" style="display:none;" accept="image/*" multiple>
             <div class="alt-avatar-grid" id="grid-alt-avatars"></div>
         </div>
@@ -213,7 +216,8 @@ async function openAltAvatarPanel() {
             if(itemsToDelete.size > 0) {
                 btnDeleteConfirm.style.color = '#ff4444';
             } else {
-                btnDeleteConfirm.style.color = 'var(--SmartThemeTextColor, #fff)';
+                // 修改为 SmartThemeBodyColor
+                btnDeleteConfirm.style.color = 'var(--SmartThemeBodyColor, #fff)';
             }
         }
 
@@ -248,9 +252,14 @@ async function openAltAvatarPanel() {
             if (isDeleteMode) return;
             data.selected = index;
             
-            const theme = getCurrentTheme();
-            if (extension_settings.avatarCroppedImages && extension_settings.avatarCroppedImages[theme]) {
-                delete extension_settings.avatarCroppedImages[theme][avatarId];
+            // 核心修复：清理该角色在【所有主题】下的剪裁缓存
+            // 因为底图变了，旧的剪裁必定失效
+            if (extension_settings.avatarCroppedImages) {
+                for (const t of Object.keys(extension_settings.avatarCroppedImages)) {
+                    if (extension_settings.avatarCroppedImages[t]) {
+                        delete extension_settings.avatarCroppedImages[t][avatarId];
+                    }
+                }
             }
             
             saveSettingsDebounced();
@@ -371,12 +380,11 @@ async function triggerNativeCropPopup(imgSrc) {
         
         saveSettingsDebounced();
         applyCroppedAvatars(); 
-        toastr.success('头像已保存');
+        toastr.success('头像剪裁已保存');
     }
 }
 
 function injectCropButton(zoomedDiv) {
-    // 移除了开关控制，剪裁按钮全局常驻
     if (zoomedDiv.querySelector('#st-native-crop-btn')) return;
 
     const controlBar = zoomedDiv.querySelector('.panelControlBar');
@@ -404,14 +412,12 @@ function injectCropButton(zoomedDiv) {
 let lastTheme = getCurrentTheme();
 
 setInterval(() => {
-    // 监听美化主题改变，重刷剪裁图片（全局常驻）
     const currentTheme = getCurrentTheme();
     if (currentTheme !== lastTheme) {
         lastTheme = currentTheme;
         applyCroppedAvatars(); 
     }
 
-    // 注入“头像点击放大”设置选项 (专门控制聊天界面头像穿透CSS)
     try {
         const targetContainer = document.querySelector("#UI-Theme-Block > div.flex-container.flexFlowColumn.flexNoGap > div.flex-container.flexFlowColumn");
         
@@ -422,11 +428,12 @@ setInterval(() => {
             
             const isEnabled = !!extension_settings.avatarClickZoomEnabled;
             
+            // 选项名称修改，选项文本改为“默认”
             container.innerHTML = `
                 <span data-i18n="Avatar Click Zoom">头像点击放大：</span>
                 <select id="st-avatar-crop-select" class="widthNatural flex1 margin0 text_pole" title="开启后允许点击聊天界面的头像进行放大">
                     <option value="true" ${isEnabled ? 'selected' : ''}>启用</option>
-                    <option value="false" ${!isEnabled ? 'selected' : ''}>禁用</option>
+                    <option value="false" ${!isEnabled ? 'selected' : ''}>默认</option>
                 </select>
             `;
             targetContainer.appendChild(container);
@@ -434,13 +441,11 @@ setInterval(() => {
             document.getElementById('st-avatar-crop-select').addEventListener('change', (e) => {
                 extension_settings.avatarClickZoomEnabled = (e.target.value === 'true');
                 saveSettingsDebounced();
-                // 仅更新点击穿透的 CSS 状态
                 updateClickZoomState();
             });
         }
     } catch (e) { }
 
-    // 注入“替换卡面”按钮 (全局常驻)
     try {
         const avatarControls = document.querySelector('#avatar_controls > .form_create_bottom_buttons_block');
         if (avatarControls && !document.getElementById('st-alt-avatar-btn')) {
@@ -457,12 +462,11 @@ setInterval(() => {
 }, 1000);
 
 jQuery(async () => {
-    // 启动时初始化
-    applyAltAvatars();      // 渲染替换卡面 CSS (全局常驻)
-    applyCroppedAvatars();  // 渲染剪裁头像 CSS (全局常驻)
-    updateClickZoomState(); // 控制“头像点击放大”CSS
+    applyAltAvatars();
+    applyCroppedAvatars();
+    updateClickZoomState();
     
-    console.log('[AvatarCropper] Successfully Loaded with Safety Checks.');
+    console.log('[AvatarCropper] Successfully Loaded.');
 
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
