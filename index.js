@@ -179,20 +179,13 @@ async function openAltAvatarPanel() {
     const data = extension_settings.altAvatars[avatarId];
     
     const html = `
-        <style>
-            /* 隐藏底部默认的OK按钮所在的整行空间 */
-            #dialogue_popup:has(#st-alt-avatar-panel) .dialogue_buttons {
-                display: none !important;
-            }
-        </style>
         <div id="st-alt-avatar-panel">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--SmartThemeBodyColor, #555); padding-bottom: 10px;">
                 <h3 style="margin: 0;">替换卡面</h3>
                 <div style="display:flex; gap:10px; align-items:center;">
                     <div class="menu_button menu_button_icon margin0" id="btn-alt-upload" title="上传图片"><i class="fa-solid fa-upload"></i></div>
                     <div class="menu_button menu_button_icon margin0" id="btn-alt-manage" title="管理列表"><i class="fa-solid fa-trash-can"></i></div>
-                    <div class="menu_button menu_button_icon margin0" id="btn-alt-confirm-select" title="确认选择" style="color:#4CAF50;"><i class="fa-solid fa-check"></i></div>
-                    <div class="menu_button menu_button_icon margin0" id="btn-alt-delete-confirm" title="确认删除" style="display:none;"><i class="fa-solid fa-trash-can"></i>&nbsp;(0)</div>
+                    <div class="menu_button menu_button_icon margin0" id="btn-alt-delete-confirm" title="确认删除" style="display:none; color:#ff4444;"><i class="fa-solid fa-trash-can"></i> (0)</div>
                 </div>
             </div>
             <!-- 支持多选的 input -->
@@ -201,7 +194,29 @@ async function openAltAvatarPanel() {
         </div>
     `;
     
-    callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    // 引入临时选中状态，点击只改状态不改 CSS
+    let tempSelected = data.selected; 
+
+    // 使用 CONFIRM 类型的弹窗（自带底部的 确认/取消 按钮）
+    callGenericPopup(html, POPUP_TYPE.CONFIRM, '', { wide: true, large: true }).then((confirm) => {
+        if (confirm) {
+            // 如果点击了底部的确认按钮，且状态有变，则应用设置
+            if (data.selected !== tempSelected) {
+                data.selected = tempSelected;
+                
+                // 只有真换了图片，才去清除当前角色的剪裁缓存
+                const theme = getCurrentTheme();
+                if (extension_settings.avatarCroppedImages && extension_settings.avatarCroppedImages[theme]) {
+                    delete extension_settings.avatarCroppedImages[theme][avatarId];
+                }
+                
+                saveSettingsDebounced();
+                applyAltAvatars();
+                applyCroppedAvatars(); 
+            }
+            toastr.success('卡面已应用');
+        }
+    });
     
     setTimeout(() => {
         const grid = document.getElementById('grid-alt-avatars');
@@ -209,22 +224,15 @@ async function openAltAvatarPanel() {
 
         const btnUpload = document.getElementById('btn-alt-upload');
         const btnManage = document.getElementById('btn-alt-manage');
-        const btnConfirmSelect = document.getElementById('btn-alt-confirm-select');
         const btnDeleteConfirm = document.getElementById('btn-alt-delete-confirm');
         const inputUpload = document.getElementById('input-alt-upload');
         
         let isDeleteMode = false;
         let itemsToDelete = new Set();
-        // 核心修复：引入临时选中状态，点击只改状态不改 CSS
-        let tempSelected = data.selected; 
         
         function updateDeleteConfirmBtn() {
-            btnDeleteConfirm.innerHTML = `<i class="fa-solid fa-trash-can"></i>&nbsp;(${itemsToDelete.size})`;
-            if(itemsToDelete.size > 0) {
-                btnDeleteConfirm.style.color = '#ff4444';
-            } else {
-                btnDeleteConfirm.style.color = 'var(--SmartThemeTextColor, #fff)';
-            }
+            btnDeleteConfirm.innerHTML = `<i class="fa-solid fa-trash-can"></i> (${itemsToDelete.size})`;
+            btnDeleteConfirm.style.color = '#ff4444';
         }
 
         function renderGrid() {
@@ -263,34 +271,6 @@ async function openAltAvatarPanel() {
             renderGrid();
         }
 
-        // 确认选择按钮逻辑
-        btnConfirmSelect.onclick = () => {
-            // 如果确认的图片就是原本生效的图片，直接关闭，完美保留剪裁缓存！
-            if (data.selected !== tempSelected) {
-                data.selected = tempSelected;
-                
-                // 只有真换了图片，才去清除当前角色的剪裁缓存
-                const theme = getCurrentTheme();
-                if (extension_settings.avatarCroppedImages && extension_settings.avatarCroppedImages[theme]) {
-                    delete extension_settings.avatarCroppedImages[theme][avatarId];
-                }
-                
-                saveSettingsDebounced();
-                applyAltAvatars();
-                applyCroppedAvatars(); 
-            }
-            
-            // 关闭弹窗 (更稳定的触发酒馆原生遮罩层点击事件)
-            const popupBg = document.getElementById('dialogue_popup_bg');
-            if (popupBg) popupBg.click();
-            else {
-                const closeBtn = document.querySelector('.dialogue_cross') || document.querySelector('.popup-button-close');
-                if (closeBtn) closeBtn.click();
-            }
-            
-            toastr.success('卡面已应用');
-        };
-        
         function toggleDeleteMark(index, element) {
             if (itemsToDelete.has(index)) {
                 itemsToDelete.delete(index);
@@ -308,7 +288,6 @@ async function openAltAvatarPanel() {
                 btnManage.innerHTML = '<i class="fa-solid fa-xmark"></i>';
                 btnManage.title = '退出管理';
                 btnUpload.style.display = 'none';
-                btnConfirmSelect.style.display = 'none'; // 隐藏选择按钮
                 btnDeleteConfirm.style.display = 'flex';
                 itemsToDelete.clear();
                 updateDeleteConfirmBtn();
@@ -316,7 +295,6 @@ async function openAltAvatarPanel() {
                 btnManage.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
                 btnManage.title = '管理列表';
                 btnUpload.style.display = 'flex';
-                btnConfirmSelect.style.display = 'flex'; // 恢复选择按钮
                 btnDeleteConfirm.style.display = 'none';
                 itemsToDelete.clear();
             }
@@ -462,7 +440,7 @@ setInterval(() => {
             
             const isEnabled = !!extension_settings.avatarClickZoomEnabled;
             
-            // 选项名称修改，首选改为“默认”
+            // 默认选项排在第一位
             container.innerHTML = `
                 <span data-i18n="Avatar Click Zoom">头像点击放大：</span>
                 <select id="st-avatar-crop-select" class="widthNatural flex1 margin0 text_pole" title="开启后允许点击聊天界面的头像进行放大">
