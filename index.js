@@ -2,27 +2,31 @@ import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
-// 初始化数据结构
 if (extension_settings.avatarCropEnabled === undefined) extension_settings.avatarCropEnabled = false;
 if (!extension_settings.avatarCroppedImages) extension_settings.avatarCroppedImages = {};
 if (!extension_settings.altAvatars) extension_settings.altAvatars = {};
 
-// ======================== 核心修复：精准 ID 提取 ========================
+// [核心修复]：完美解析 SillyTavern 复杂的图片 URL 路径，精确提取真实的 Avatar 文件名
 function getAvatarIdFromSrc(src) {
-    if (!src) return null;
     try {
-        // 过滤掉 base64、blob 以及酒馆的默认占位图
-        if (src.startsWith('data:') || src.startsWith('blob:')) return null;
+        // 将相对路径转化为绝对路径以供 URL 解析器读取
+        const urlObj = new URL(src, window.location.origin);
+        
+        // 1. 检查是否存在如 ?file=Alice.png 或 ?avatar=User.png 这样的参数
+        const fileParam = urlObj.searchParams.get('file') || urlObj.searchParams.get('avatar');
+        if (fileParam) {
+            return decodeURIComponent(fileParam);
+        }
+        
+        // 2. 如果没有参数，说明是常规路径如 /characters/Alice.png，获取最后一段
+        const parts = urlObj.pathname.split('/');
+        let filename = parts[parts.length - 1];
+        return decodeURIComponent(filename);
+    } catch (e) {
+        // 最基础的后备方案
         let cleanSrc = src.split('?')[0];
         const parts = cleanSrc.split('/');
-        const filename = decodeURIComponent(parts[parts.length - 1]);
-        
-        if (!filename || filename.trim() === '' || filename === 'ai4.png' || filename === 'ai4_user.png') {
-            return null;
-        }
-        return filename;
-    } catch (e) {
-        return null;
+        return decodeURIComponent(parts[parts.length - 1]);
     }
 }
 
@@ -71,42 +75,30 @@ async function getBase64FromUrl(url) {
     });
 }
 
-// ======================== CSS 生成引擎 (修复防误杀) ========================
-
-// 辅助生成极其严格的 CSS 选择器，避免 a.png 匹配到 boba.png，避免空匹配
-function generateStrictSelectors(id) {
-    return `
-        .avatar img[src$="/${id}"],
-        .avatar img[src*="/${id}?"],
-        .avatar img[src^="${id}"],
-        
-        #avatar_load_preview[src$="/${id}"],
-        #avatar_load_preview[src*="/${id}?"],
-        #avatar_load_preview[src^="${id}"],
-        
-        .zoomed_avatar img[src$="/${id}"],
-        .zoomed_avatar img[src*="/${id}?"],
-        .zoomed_avatar img[src^="${id}"]
-    `;
-}
-
+// 渲染替换卡面 CSS (精确瞄准，不再误伤)
 function applyAltAvatars() {
     let cssString = '';
     for (const [avatarId, data] of Object.entries(extension_settings.altAvatars)) {
-        // 数据安检：跳过非法数据
-        if (!avatarId || avatarId === 'null' || data.selected === null || !data.images[data.selected]) continue;
+        // 如果之前因为 bug 存入了 'thumbnail' 这个脏数据，直接跳过不渲染
+        if (avatarId === 'thumbnail') continue; 
 
-        const escapedId = avatarId.replace(/"/g, '\\"');
-        const encodedId = encodeURIComponent(avatarId).replace(/"/g, '\\"');
-        const b64 = data.images[data.selected];
+        if (data.selected !== null && data.images[data.selected]) {
+            const escapedId = avatarId.replace(/"/g, '\\"');
+            const encodedId = encodeURIComponent(avatarId).replace(/"/g, '\\"');
+            const b64 = data.images[data.selected];
 
-        cssString += `
-            ${generateStrictSelectors(escapedId)},
-            ${generateStrictSelectors(encodedId)} {
-                content: url("${b64}") !important;
-                object-fit: cover !important;
-            }
-        `;
+            cssString += `
+                .avatar img[src*="${escapedId}"],
+                .avatar img[src*="${encodedId}"],
+                #avatar_load_preview[src*="${escapedId}"],
+                #avatar_load_preview[src*="${encodedId}"],
+                .zoomed_avatar img[src*="${escapedId}"],
+                .zoomed_avatar img[src*="${encodedId}"] {
+                    content: url("${b64}") !important;
+                    object-fit: cover !important;
+                }
+            `;
+        }
     }
 
     let styleTag = document.getElementById('custom-alt-avatar-style');
@@ -118,6 +110,7 @@ function applyAltAvatars() {
     styleTag.textContent = cssString;
 }
 
+// 渲染剪裁头像 CSS
 function applyCroppedAvatars() {
     const theme = getCurrentTheme();
     const croppedData = extension_settings.avatarCroppedImages[theme] || {};
@@ -125,16 +118,14 @@ function applyCroppedAvatars() {
     
     if (extension_settings.avatarCropEnabled) {
         for (const [avatarId, base64Image] of Object.entries(croppedData)) {
-            // 数据安检
-            if (!avatarId || avatarId === 'null' || !base64Image) continue;
+            // 跳过脏数据
+            if (avatarId === 'thumbnail') continue;
 
             const escapedId = avatarId.replace(/"/g, '\\"');
             const encodedId = encodeURIComponent(avatarId).replace(/"/g, '\\"');
-            
-            // 剪裁优先级略高，所以生成相同的安全选择器
             cssString += `
-                ${generateStrictSelectors(escapedId)},
-                ${generateStrictSelectors(encodedId)} {
+                .avatar img[src*="${escapedId}"],
+                .avatar img[src*="${encodedId}"] {
                     content: url("${base64Image}") !important;
                     object-fit: cover !important;
                 }
@@ -171,19 +162,8 @@ function updateAvatarFeaturesState() {
         pointerStyle.remove();
     }
 
-    const altBtn = document.getElementById('st-alt-avatar-btn');
-    if (altBtn) altBtn.style.display = isEnabled ? 'flex' : 'none';
-
-    if (isEnabled) {
-        applyAltAvatars();
-        applyCroppedAvatars();
-    } else {
-        if (document.getElementById('custom-avatar-crop-style')) document.getElementById('custom-avatar-crop-style').textContent = '';
-        if (document.getElementById('custom-alt-avatar-style')) document.getElementById('custom-alt-avatar-style').textContent = '';
-    }
+    applyCroppedAvatars();
 }
-
-// ======================== 替换卡面面板 ========================
 
 async function openAltAvatarPanel() {
     const previewImg = document.getElementById('avatar_load_preview');
@@ -195,8 +175,9 @@ async function openAltAvatarPanel() {
     const originalSrc = previewImg.getAttribute('src');
     const avatarId = getAvatarIdFromSrc(originalSrc);
     
-    if (!avatarId) {
-        toastr.warning('无法识别当前角色的独立头像ID，请尝试重新选择角色。');
+    // 如果由于之前的Bug传入了无效数据，阻止打开以防崩溃
+    if (avatarId === 'thumbnail') {
+        toastr.error('获取头像文件名失败，无法开启替换功能。');
         return;
     }
     
@@ -300,17 +281,11 @@ async function openAltAvatarPanel() {
     }, 100);
 }
 
-// ======================== 原生剪裁弹窗 ========================
-
 async function triggerNativeCropPopup(imgSrc) {
     const avatarId = getAvatarIdFromSrc(imgSrc);
-    if (!avatarId) {
-        toastr.error('无法读取图片 ID，请重新选择角色');
-        return;
-    }
+    if (avatarId === 'thumbnail') return toastr.error('图片获取异常，无法剪裁');
 
     let base64Original;
-
     if (extension_settings.altAvatars[avatarId] && extension_settings.altAvatars[avatarId].selected !== null) {
         const altData = extension_settings.altAvatars[avatarId];
         base64Original = altData.images[altData.selected];
@@ -359,8 +334,7 @@ function injectCropButton(zoomedDiv) {
         const img = zoomedDiv.querySelector('img');
         if (img) {
             zoomedDiv.click(); 
-            // 确保使用真正的属性 src
-            await triggerNativeCropPopup(img.getAttribute('src') || img.src);
+            await triggerNativeCropPopup(img.src);
         }
     });
 
@@ -368,8 +342,6 @@ function injectCropButton(zoomedDiv) {
     if (closeBtn) controlBar.insertBefore(btn, closeBtn);
     else controlBar.appendChild(btn);
 }
-
-// ======================== 安全 DOM 注入轮询引擎 ========================
 
 let lastTheme = getCurrentTheme();
 
@@ -405,7 +377,7 @@ setInterval(() => {
                 updateAvatarFeaturesState();
             });
         }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
         const avatarControls = document.querySelector('#avatar_controls > .form_create_bottom_buttons_block');
@@ -418,7 +390,6 @@ setInterval(() => {
             btn.addEventListener('click', openAltAvatarPanel);
             
             avatarControls.prepend(btn);
-            altBtn.style.display = extension_settings.avatarCropEnabled ? 'flex' : 'none';
         }
     } catch (e) {}
 }, 1000);
@@ -426,7 +397,8 @@ setInterval(() => {
 jQuery(async () => {
     applyAltAvatars();
     updateAvatarFeaturesState();
-    console.log('[AvatarCropper] Successfully Loaded with Safety Checks & Strict Targeting.');
+    
+    console.log('[AvatarCropper] Successfully Loaded with Safety Checks.');
 
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
