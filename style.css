@@ -1,44 +1,34 @@
-/* ===== 剪裁头像 & 放大面板控制条 ===== */
+/* ===== 剪裁及控制栏 ===== */
 
 .zoomed_avatar .panelControlBar {
     align-items: center;
     opacity: 1 !important;
-    background: rgba(0, 0, 0, 0.6) !important;
+    background: rgba(0, 0, 0, 0.7) !important;
     border-radius: 8px;
-    padding: 5px 10px 5px 0;
+    padding: 5px 10px;
     display: flex;
-    gap: 8px;
+    gap: 15px;
 }
 
 .zoomed_avatar .panelControlBar .drag-grabber,
 .zoomed_avatar .panelControlBar .dragClose,
-.st-avatar-ext-btn {
+.st-avatar-ctrl-btn {
     filter: none !important;
     opacity: 1 !important;
     font-size: calc(var(--mainFontSize)*1.3) !important;
     cursor: pointer;
-    align-items: center;
-    justify-content: center;
-    padding: 0 5px;
-    line-height: 1;
     color: white !important;
-    transition: color 0.2s, transform 0.1s;
+    transition: all 0.2s;
 }
 
-.st-avatar-ext-btn:hover {
+.st-avatar-ctrl-btn:hover {
     transform: scale(1.1);
 }
 
-/* 绑定状态激活时的颜色 */
-.st-avatar-ext-btn.is-bound {
+/* 绑定按钮激活状态（绿色） */
+.st-avatar-ctrl-btn.bound-active {
     color: #4CAF50 !important;
-    text-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
 }
-
-.dragClose {
-    height: 20px !important;
-}
-
 
 /* ===== 扩展触控热区 ===== */
 
@@ -75,12 +65,12 @@
     height: 16px !important;
 }
 
-/* ===== 替换卡面（图库）面板 ===== */
+/* ===== 替换图库面板 ===== */
 
 #st-alt-avatar-panel .alt-avatar-grid {
     display: grid;
-    /* 强行规定最小100px，自动填充，达到一排大致3张的效果 */
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    /* 1:1 比例，一排三个 */
+    grid-template-columns: repeat(3, 1fr);
     gap: 15px;
     margin-top: 15px;
     max-height: 70dvh;
@@ -97,9 +87,8 @@
     cursor: pointer;
     border: 3px solid var(--SmartThemeBorderColor, #444);
     border-radius: 8px;
-    aspect-ratio: 1 / 1; /* 改为1:1比例 */
+    aspect-ratio: 1 / 1;
     overflow: hidden;
-    background-color: var(--SmartThemeBodyColor, #222);
 }
 
 #st-alt-avatar-panel .alt-avatar-item:hover {
