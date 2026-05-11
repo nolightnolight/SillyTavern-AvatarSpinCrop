@@ -64,9 +64,7 @@ async function uploadToBackend(base64Data, prefix = "image") {
     uploadCounter = (uploadCounter + 1) % 10000;
     const b64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
     const suffix = uploadCounter.toString().padStart(4, '0');
-    // 去除原名中的时间戳（例如 1745680083698-）以保持文件名简短整洁
-    const cleanPrefix = prefix.replace(/^\d+-/, '');
-    const filename = `${cleanPrefix}_${suffix}`;
+    const filename = `${prefix}_${suffix}`;
     
     const requestBody = {
         image: b64,
@@ -262,7 +260,9 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
     let tempSelectedPath = currentBinding;
     let isDeleteMode = false;
     let itemsToDelete = new Set();
-    const avatarNamePrefix = avatarId.split('.')[0];
+    
+    // 去除原文件名可能携带的 13位时间戳前缀（由SillyTavern生成的User头像通常有）
+    const avatarNamePrefix = avatarId.split('.')[0].replace(/^\d{13,}-/, '');
 
     // 提前创建占位事件钩子
     setTimeout(() => {
@@ -401,8 +401,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                const cleanName = avatarNamePrefix.replace(/^\d+-/, '');
-                a.download = `替换卡面-${cleanName}.json`;
+                a.download = `替换卡面-${avatarNamePrefix}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
                 toastr.success('已导出角色图库');
@@ -445,7 +444,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
 
     const result = await callGenericPopup(html, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: '选择此图片', cancelButton: '取消' });
     
-    // 用户点击了选择此图片才保存修改
+    // 用户点击了选择此图片按钮才保存修改
     if (result === POPUP_RESULT.AFFIRMATIVE) {
         if (tempSelectedPath !== currentBinding) {
             const theme = getCurrentTheme();
@@ -503,7 +502,8 @@ async function triggerNativeCropPopup(imgSrc, avatarId, isUser, zoomedDiv) {
     const croppedImageBase64 = await cropPromise;
 
     if (croppedImageBase64) {
-        const path = await uploadToBackend(croppedImageBase64, avatarId.split('.')[0]);
+        const avatarNamePrefix = avatarId.split('.')[0].replace(/^\d{13,}-/, '');
+        const path = await uploadToBackend(croppedImageBase64, avatarNamePrefix);
         if (!path) return toastr.error('无法保存图片');
 
         if (!extension_settings.avatarThemeCrops) extension_settings.avatarThemeCrops = {};
@@ -612,7 +612,7 @@ jQuery(async () => {
     applyAvatarCss();
     updateClickZoomState();
     
-    // 监听原生上传动作，触发解绑并自动迁移对应的图库配置
+    // 监听原生上传动作，自动迁移对应的图库及绑定配置
     document.body.addEventListener('change', (e) => {
         if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'file') {
             const id = e.target.id;
@@ -628,24 +628,6 @@ jQuery(async () => {
                 }
 
                 if (oldAvatarId && oldAvatarId !== 'thumbnail') {
-                    // 原生上传文件一被选中，立即清除旧文件的所有主题绑定与裁剪数据（相当于恢复原图显示）
-                    if (extension_settings.avatarThemeBindings) {
-                        for (const t in extension_settings.avatarThemeBindings) {
-                            delete extension_settings.avatarThemeBindings[t][oldAvatarId];
-                        }
-                    }
-                    if (extension_settings.avatarThemeCrops) {
-                        for (const t in extension_settings.avatarThemeCrops) {
-                            if (extension_settings.avatarThemeCrops[t][oldAvatarId]) {
-                                deleteFromBackend(extension_settings.avatarThemeCrops[t][oldAvatarId]);
-                                delete extension_settings.avatarThemeCrops[t][oldAvatarId];
-                            }
-                        }
-                    }
-                    saveSettingsDebounced();
-                    applyAvatarCss();
-
-                    // 后台轮询等待真实的新文件名分配完成后，只迁移图库的归属
                     let checkCount = 0;
                     const migrateInterval = setInterval(() => {
                         checkCount++;
@@ -654,11 +636,30 @@ jQuery(async () => {
                             if (currentSrc && !currentSrc.startsWith('blob:') && !currentSrc.startsWith('data:')) {
                                 const newAvatarId = getAvatarIdFromSrc(currentSrc);
                                 if (newAvatarId !== oldAvatarId && newAvatarId !== 'thumbnail') {
+                                    // 迁移图库列表
                                     if (extension_settings.charGalleryImages && extension_settings.charGalleryImages[oldAvatarId]) {
                                         extension_settings.charGalleryImages[newAvatarId] = JSON.parse(JSON.stringify(extension_settings.charGalleryImages[oldAvatarId]));
                                         delete extension_settings.charGalleryImages[oldAvatarId];
-                                        saveSettingsDebounced();
                                     }
+                                    // 迁移图库绑定与裁切数据
+                                    if (extension_settings.avatarThemeBindings) {
+                                        for (const t in extension_settings.avatarThemeBindings) {
+                                            if (extension_settings.avatarThemeBindings[t][oldAvatarId]) {
+                                                extension_settings.avatarThemeBindings[t][newAvatarId] = extension_settings.avatarThemeBindings[t][oldAvatarId];
+                                                delete extension_settings.avatarThemeBindings[t][oldAvatarId];
+                                            }
+                                        }
+                                    }
+                                    if (extension_settings.avatarThemeCrops) {
+                                        for (const t in extension_settings.avatarThemeCrops) {
+                                            if (extension_settings.avatarThemeCrops[t][oldAvatarId]) {
+                                                extension_settings.avatarThemeCrops[t][newAvatarId] = extension_settings.avatarThemeCrops[t][oldAvatarId];
+                                                delete extension_settings.avatarThemeCrops[t][oldAvatarId];
+                                            }
+                                        }
+                                    }
+                                    saveSettingsDebounced();
+                                    applyAvatarCss();
                                 }
                                 clearInterval(migrateInterval);
                             }
