@@ -5,7 +5,7 @@
     opacity: 1 !important;
     background: rgba(0, 0, 0, 0.5) !important;
     border-radius: 8px;
-    padding: 5px 10px 5px 0;
+    padding: 5px 15px 5px 0;
 }
 
 .st-avatar-injected-btns {
@@ -22,7 +22,7 @@
     cursor: pointer;
     align-items: center;
     justify-content: center;
-    padding: 0 15px 0 10px;
+    padding: 0 10px;
     line-height: 1;
 }
 
@@ -134,8 +134,6 @@
     gap: 5px;
     flex-direction: row;
     width: fit-content;
-    padding: 2px 7px;
-    line-height: 1.2;
 }
 
 #btn-alt-delete-confirm.active {
