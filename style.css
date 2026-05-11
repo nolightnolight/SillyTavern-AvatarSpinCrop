@@ -1,4 +1,25 @@
-/* ===== 剪裁头像及控制栏 ===== */
+/* ===== 放大头像与容器自适应尺寸修正 ===== */
+
+.zoomed_avatar.draggable {
+    height: auto !important;
+    width: auto !important;
+    max-height: 95vh;
+    max-width: 95vw;
+}
+
+.zoomed_avatar_container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zoomed_avatar_img {
+    max-height: 85vh !important;
+    max-width: 90vw !important;
+    object-fit: contain;
+}
+
+/* ===== 控制栏及按钮 ===== */
 
 .zoomed_avatar .panelControlBar {
     align-items: center;
@@ -79,7 +100,7 @@
     height: 16px !important;
 }
 
-/* ===== 图库面板及顶部菜单 ===== */
+/* ===== 图库面板 ===== */
 
 .st-gallery-header {
     display: flex;
@@ -95,6 +116,7 @@
 
 .st-gallery-actions {
     display: flex;
+    gap: 10px;
     align-items: center;
 }
 
@@ -159,13 +181,9 @@
     color: #ff4444;
     cursor: pointer;
     align-items: center;
+    justify-content: center;
     flex-direction: row;
-    white-space: nowrap;
     font-weight: bold;
-}
-
-#btn-alt-delete-confirm span {
-    margin-left: 5px;
 }
 
 #btn-alt-delete-confirm.active {
