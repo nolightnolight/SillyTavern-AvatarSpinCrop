@@ -134,6 +134,8 @@
     gap: 5px;
     flex-direction: row;
     width: fit-content;
+    padding: 0 7px;
+    line-height: 1.7;
 }
 
 #btn-alt-delete-confirm.active {
