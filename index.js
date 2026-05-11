@@ -58,9 +58,14 @@ setInterval(() => {
 
 // ======================== 后端文件操作 ========================
 
-async function uploadToBackend(base64Data) {
+async function uploadToBackend(base64Data, avatarId) {
     const b64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-    const filename = `st_cropper_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+    
+    // 使用传入的avatarId（去掉扩展名）作为文件名前缀，清理非法字符，如果为空则默认为 'avatar'
+    let baseName = avatarId ? avatarId.replace(/\.[^/.]+$/, "") : "avatar";
+    baseName = baseName.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5]/g, '_'); 
+    
+    const filename = `${baseName}_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     const requestBody = {
         image: b64,
         format: 'png',
@@ -363,7 +368,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
             let count = 0;
             for(let i = 0; i < files.length; i++) {
                 const b64 = await resizeImageToBase64(files[i]);
-                const path = await uploadToBackend(b64);
+                const path = await uploadToBackend(b64, avatarId);
                 if (path) {
                     if (isUser) {
                         extension_settings.userGalleryImages.push(path);
@@ -393,7 +398,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `st_gallery_${avatarId.split('.')[0]}.json`;
+                a.download = `替换卡面_${avatarId.replace(/\.[^/.]+$/, "")}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
                 toastr.success('已导出角色图库');
@@ -413,7 +418,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
                         toastr.info(`正在导入 ${data.length} 张图片`);
                         let count = 0;
                         for (const b64 of data) {
-                            const path = await uploadToBackend(b64);
+                            const path = await uploadToBackend(b64, avatarId);
                             if (path) {
                                 extension_settings.charGalleryImages[avatarId].push(path);
                                 count++;
@@ -494,7 +499,7 @@ async function triggerNativeCropPopup(imgSrc, avatarId, isUser, zoomedDiv) {
     const croppedImageBase64 = await cropPromise;
 
     if (croppedImageBase64) {
-        const path = await uploadToBackend(croppedImageBase64);
+        const path = await uploadToBackend(croppedImageBase64, avatarId);
         if (!path) return toastr.error('无法保存图片');
 
         if (!extension_settings.avatarThemeCrops) extension_settings.avatarThemeCrops = {};
