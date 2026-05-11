@@ -8,10 +8,6 @@
     padding: 5px 10px 5px 0;
 }
 
-.st-avatar-injected-btns {
-    display: flex;
-}
-
 .zoomed_avatar .panelControlBar .drag-grabber,
 .zoomed_avatar .panelControlBar .dragClose,
 #st-native-crop-btn,
@@ -42,6 +38,10 @@
 
 .dragClose {
     height: 20px !important;
+}
+
+.st-avatar-injected-btns {
+    display: flex;
 }
 
 /* ===== 扩展触控热区 ===== */
@@ -79,9 +79,9 @@
     height: 16px !important;
 }
 
-/* ===== 图库面板 ===== */
+/* ===== 图库面板及顶部菜单 ===== */
 
-.st-alt-avatar-header {
+.st-gallery-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -89,13 +89,12 @@
     padding-bottom: 10px;
 }
 
-.st-alt-avatar-title {
+.st-gallery-header h3 {
     margin: 0;
 }
 
-.st-alt-avatar-controls {
+.st-gallery-actions {
     display: flex;
-    gap: 10px;
     align-items: center;
 }
 
@@ -161,8 +160,12 @@
     cursor: pointer;
     align-items: center;
     flex-direction: row;
-    gap: 5px;
+    white-space: nowrap;
     font-weight: bold;
+}
+
+#btn-alt-delete-confirm span {
+    margin-left: 5px;
 }
 
 #btn-alt-delete-confirm.active {
