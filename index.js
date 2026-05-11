@@ -557,9 +557,14 @@ async function triggerNativeCropPopup(imgSrc, avatarId, isUser, zoomedDiv) {
     const croppedImageBase64 = await cropPromise;
 
     if (croppedImageBase64) {
-        // 根据“图片原名_主题名字_1”的规律命名
-        const baseImageName = sourcePath.split('/').pop().split('.')[0];
-        const safeThemeName = theme.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5]/g, '');
+        // 先去参数、再取文件名、再完整解码还原中文
+        let cleanSrc = sourcePath.split('?')[0];
+        let filenameWithExt = cleanSrc.split('/').pop();
+        let baseImageName = decodeURIComponent(filenameWithExt).replace(/\.[^/.]+$/, "");
+        
+        // 过滤文件系统中不安全的字符，但允许中文字符和基础符号
+        baseImageName = baseImageName.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5\-]/g, '');
+        const safeThemeName = theme.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5\-]/g, '');
         const exactFilename = `${baseImageName}_${safeThemeName}_1`;
 
         if (!extension_settings.avatarThemeCrops) extension_settings.avatarThemeCrops = {};
@@ -704,7 +709,7 @@ jQuery(async () => {
     applyAvatarCss();
     updateClickZoomState();
     
-    // 监听原生上传动作，自动迁移对应的图库及绑定配置
+    // 监听原生上传动作，自动迁移对应的图库及绑定配置，并清理旧原图自身的剪裁残留
     document.body.addEventListener('change', (e) => {
         if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'file') {
             const id = e.target.id;
@@ -733,7 +738,7 @@ jQuery(async () => {
                                         extension_settings.charGalleryImages[newAvatarId] = JSON.parse(JSON.stringify(extension_settings.charGalleryImages[oldAvatarId]));
                                         delete extension_settings.charGalleryImages[oldAvatarId];
                                     }
-                                    // 迁移图库绑定与裁切数据
+                                    // 迁移图库绑定
                                     if (extension_settings.avatarThemeBindings) {
                                         for (const t in extension_settings.avatarThemeBindings) {
                                             if (extension_settings.avatarThemeBindings[t][oldAvatarId]) {
@@ -742,9 +747,17 @@ jQuery(async () => {
                                             }
                                         }
                                     }
+                                    // 迁移与清理剪裁数据
                                     if (extension_settings.avatarThemeCrops) {
                                         for (const t in extension_settings.avatarThemeCrops) {
                                             if (extension_settings.avatarThemeCrops[t][oldAvatarId]) {
+                                                // 当换了新的原图，旧原图自身对应的剪裁图片必须全部删除
+                                                const oldOriginalCropPath = extension_settings.avatarThemeCrops[t][oldAvatarId][oldAvatarId];
+                                                if (oldOriginalCropPath) {
+                                                    deleteFromBackend(oldOriginalCropPath);
+                                                    delete extension_settings.avatarThemeCrops[t][oldAvatarId][oldAvatarId];
+                                                }
+                                                // 将剩余图库图片的独立剪裁配置转移给新原图ID
                                                 extension_settings.avatarThemeCrops[t][newAvatarId] = extension_settings.avatarThemeCrops[t][oldAvatarId];
                                                 delete extension_settings.avatarThemeCrops[t][oldAvatarId];
                                             }
