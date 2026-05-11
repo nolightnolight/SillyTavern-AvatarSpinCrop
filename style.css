@@ -1,5 +1,18 @@
 /* ===== 剪裁头像及控制栏 ===== */
 
+/* 强制重写放大头像内联样式，根据图片自适应并防止错位 */
+.zoomed_avatar.draggable {
+    height: auto !important;
+    width: auto !important;
+    max-height: 95dvh !important;
+    max-width: 95dvw !important;
+}
+
+.zoomed_avatar.draggable img {
+    max-height: 85dvh !important;
+    object-fit: contain !important;
+}
+
 .zoomed_avatar .panelControlBar {
     align-items: center;
     opacity: 1 !important;
@@ -10,6 +23,7 @@
 
 .st-avatar-injected-btns {
     display: flex;
+    gap: 10px;
 }
 
 .zoomed_avatar .panelControlBar .drag-grabber,
@@ -42,19 +56,6 @@
 
 .dragClose {
     height: 20px !important;
-}
-
-/* 修复放大头像尺寸根据原图锁死的问题 */
-.zoomed_avatar {
-    width: auto !important;
-    height: auto !important;
-    max-width: 95vw;
-    max-height: 95vh;
-}
-.zoomed_avatar img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain !important;
 }
 
 /* ===== 扩展触控热区 ===== */
@@ -152,18 +153,13 @@
 
 #btn-alt-delete-confirm {
     display: none;
+    flex-direction: row;
+    align-items: center;
     color: #ff4444;
     cursor: pointer;
-    align-items: center;
-    flex-direction: row;
-    white-space: nowrap;
     font-weight: bold;
 }
 
 #btn-alt-delete-confirm.active {
     display: flex !important;
-}
-
-#btn-alt-delete-confirm span {
-    margin-left: 5px;
 }
