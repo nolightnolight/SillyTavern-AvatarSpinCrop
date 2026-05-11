@@ -32,17 +32,17 @@
     color: white !important;
 }
 
+.st-avatar-injected-btns {
+    display: flex;
+    align-items: center;
+}
+
 #st-bind-btn.is-bound {
     color: #4CAF50 !important;
 }
 
 .dragClose {
     height: 20px !important;
-}
-
-/* 注入按钮容器（去除gap） */
-.st-avatar-injected-btns {
-    display: flex;
 }
 
 /* ===== 扩展触控热区 ===== */
@@ -80,29 +80,7 @@
     height: 16px !important;
 }
 
-/* ===== 图库面板及结构 ===== */
-
-/* 隐藏原生底部控制栏 */
-#dialogue_popup:has(#st-alt-avatar-panel) .popup-controls {
-    display: none !important;
-}
-
-.st-panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--SmartThemeBodyColor, #555);
-    padding-bottom: 10px;
-}
-
-.st-panel-header h3 {
-    margin: 0;
-}
-
-.st-panel-actions {
-    display: flex;
-    align-items: center;
-}
+/* ===== 图库面板 ===== */
 
 #st-alt-avatar-panel .alt-avatar-grid {
     display: grid;
@@ -165,8 +143,7 @@
     color: #ff4444;
     cursor: pointer;
     align-items: center;
-    flex-direction: row;
-    gap: 5px;
+    justify-content: center;
     font-weight: bold;
 }
 
