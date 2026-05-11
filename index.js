@@ -29,6 +29,12 @@ function getAvatarIdFromSrc(src) {
     }
 }
 
+// 剥离 ST 原生自带的13位时间戳前缀，提取出纯净的角色/用户名
+function getCleanName(filename) {
+    if (!filename) return '';
+    return filename.replace(/^\d{13,}-/, '');
+}
+
 function isUserAvatar(src) {
     if (!src) return false;
     const cleanSrc = decodeURIComponent(src);
@@ -42,12 +48,6 @@ function getCurrentTheme() {
 
 function getBinding(theme, avatarId) {
     return extension_settings.avatarThemeBindings?.[theme]?.[avatarId] || null;
-}
-
-function getCleanNamePrefix(avatarId) {
-    if (!avatarId) return 'image';
-    // 去除 .png 等后缀，并去除前面可能带有的时间戳（如 1745680083698-）
-    return avatarId.split('.')[0].replace(/^\d+-/, '');
 }
 
 // 记录当前真正有效的文件名（过滤掉临时 blob 路径）
@@ -64,10 +64,9 @@ setInterval(() => {
 
 // ======================== 后端文件操作 ========================
 
-let uploadCounter = 0;
+let uploadCounter = 0; // 4位数循环计数器
 
 async function uploadToBackend(base64Data, prefix = "image") {
-    // 计数器循环，增加至4位数字
     uploadCounter = (uploadCounter + 1) % 10000;
     const b64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
     const suffix = uploadCounter.toString().padStart(4, '0');
@@ -205,7 +204,47 @@ function updateClickZoomState() {
     }
 }
 
-// ======================== 删除及清理绑定 ========================
+// ======================== 数据迁移与清理 ========================
+
+function migrateAvatarData(oldId, newId) {
+    if (!oldId || !newId || oldId === newId) return;
+    
+    // 迁移图库列表
+    if (extension_settings.charGalleryImages && extension_settings.charGalleryImages[oldId]) {
+        extension_settings.charGalleryImages[newId] = JSON.parse(JSON.stringify(extension_settings.charGalleryImages[oldId]));
+        delete extension_settings.charGalleryImages[oldId];
+    }
+    
+    // 迁移绑定数据（跳过当前主题，以实现原生上传图片后自动解绑恢复原图的效果）
+    const currentTheme = getCurrentTheme();
+    if (extension_settings.avatarThemeBindings) {
+        for (const t in extension_settings.avatarThemeBindings) {
+            if (extension_settings.avatarThemeBindings[t][oldId]) {
+                if (t !== currentTheme) {
+                    extension_settings.avatarThemeBindings[t][newId] = extension_settings.avatarThemeBindings[t][oldId];
+                }
+                delete extension_settings.avatarThemeBindings[t][oldId];
+            }
+        }
+    }
+    
+    // 迁移裁切数据（同样跳过当前主题，并从后端删除已失效的裁切图）
+    if (extension_settings.avatarThemeCrops) {
+        for (const t in extension_settings.avatarThemeCrops) {
+            if (extension_settings.avatarThemeCrops[t][oldId]) {
+                if (t !== currentTheme) {
+                    extension_settings.avatarThemeCrops[t][newId] = extension_settings.avatarThemeCrops[t][oldId];
+                } else {
+                    deleteFromBackend(extension_settings.avatarThemeCrops[t][oldId]);
+                }
+                delete extension_settings.avatarThemeCrops[t][oldId];
+            }
+        }
+    }
+    
+    saveSettingsDebounced();
+    applyAvatarCss();
+}
 
 async function deleteImages(pathsToDelete, avatarId, isUser) {
     if (isUser) {
@@ -245,6 +284,17 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
     if (!extension_settings.charGalleryImages) extension_settings.charGalleryImages = {};
     if (!isUser && !extension_settings.charGalleryImages[avatarId]) extension_settings.charGalleryImages[avatarId] = [];
     
+    // 智能防丢图补救逻辑：如果当前角色图库为空，根据去时间戳的纯净名寻找是否有匹配的旧图库数据，有则自动继承恢复
+    let images = isUser ? extension_settings.userGalleryImages : extension_settings.charGalleryImages[avatarId];
+    if (!isUser && (!images || images.length === 0)) {
+        const cleanCurrent = getCleanName(avatarId);
+        const possibleOldKey = Object.keys(extension_settings.charGalleryImages || {}).find(k => getCleanName(k) === cleanCurrent && extension_settings.charGalleryImages[k].length > 0);
+        if (possibleOldKey) {
+            migrateAvatarData(possibleOldKey, avatarId);
+            images = extension_settings.charGalleryImages[avatarId];
+        }
+    }
+
     const html = `
         <div id="st-alt-avatar-panel">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--SmartThemeBodyColor, #555); padding-bottom: 10px;">
@@ -267,9 +317,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
     let tempSelectedPath = currentBinding;
     let isDeleteMode = false;
     let itemsToDelete = new Set();
-    
-    // 获取无时间戳的纯净前缀名
-    const avatarNamePrefix = getCleanNamePrefix(avatarId);
+    const avatarNamePrefix = getCleanName(avatarId).split('.')[0]; // 去除时间戳和后缀的文件名
 
     // 提前创建占位事件钩子
     setTimeout(() => {
@@ -293,7 +341,6 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
             origDiv.onclick = () => selectAvatar(null);
             grid.appendChild(origDiv);
             
-            const images = isUser ? extension_settings.userGalleryImages : extension_settings.charGalleryImages[avatarId];
             if (images) {
                 images.forEach((path) => {
                     const itemDiv = document.createElement('div');
@@ -365,6 +412,8 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
             }
 
             await deleteImages(Array.from(itemsToDelete), avatarId, isUser);
+            // 同步刷新当前页面的 images 引用
+            images = isUser ? extension_settings.userGalleryImages : extension_settings.charGalleryImages[avatarId];
             btnManage.click(); 
             toastr.success('已删除图片');
         };
@@ -380,11 +429,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
                 const b64 = await resizeImageToBase64(files[i]);
                 const path = await uploadToBackend(b64, avatarNamePrefix);
                 if (path) {
-                    if (isUser) {
-                        extension_settings.userGalleryImages.push(path);
-                    } else {
-                        extension_settings.charGalleryImages[avatarId].push(path);
-                    }
+                    images.push(path);
                     count++;
                 }
             }
@@ -397,7 +442,6 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
 
         if (btnExport) {
             btnExport.onclick = async () => {
-                const images = extension_settings.charGalleryImages[avatarId] || [];
                 if (images.length === 0) return toastr.warning('角色图库为空，请先上传图片');
                 toastr.info('正在获取图片，请稍候...');
                 const exportData = [];
@@ -430,7 +474,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
                         for (const b64 of data) {
                             const path = await uploadToBackend(b64, avatarNamePrefix);
                             if (path) {
-                                extension_settings.charGalleryImages[avatarId].push(path);
+                                images.push(path);
                                 count++;
                             }
                         }
@@ -451,7 +495,7 @@ async function openGallery(isUser, avatarId, originalSrc, zoomedDiv) {
 
     const result = await callGenericPopup(html, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: '选择此图片', cancelButton: '取消' });
     
-    // 用户点击了选择此图片按钮才保存修改
+    // 用户点击了确认按钮才保存修改
     if (result === POPUP_RESULT.AFFIRMATIVE) {
         if (tempSelectedPath !== currentBinding) {
             const theme = getCurrentTheme();
@@ -509,7 +553,8 @@ async function triggerNativeCropPopup(imgSrc, avatarId, isUser, zoomedDiv) {
     const croppedImageBase64 = await cropPromise;
 
     if (croppedImageBase64) {
-        const path = await uploadToBackend(croppedImageBase64, getCleanNamePrefix(avatarId));
+        const avatarNamePrefix = getCleanName(avatarId).split('.')[0];
+        const path = await uploadToBackend(croppedImageBase64, avatarNamePrefix);
         if (!path) return toastr.error('无法保存图片');
 
         if (!extension_settings.avatarThemeCrops) extension_settings.avatarThemeCrops = {};
@@ -618,7 +663,7 @@ jQuery(async () => {
     applyAvatarCss();
     updateClickZoomState();
     
-    // 监听原生上传动作，自动迁移对应的图库并解除主题绑定
+    // 监听原生上传动作，自动迁移对应的图库并使当前主题解绑（恢复成新原图）
     document.body.addEventListener('change', (e) => {
         if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'file') {
             const id = e.target.id;
@@ -642,30 +687,7 @@ jQuery(async () => {
                             if (currentSrc && !currentSrc.startsWith('blob:') && !currentSrc.startsWith('data:')) {
                                 const newAvatarId = getAvatarIdFromSrc(currentSrc);
                                 if (newAvatarId !== oldAvatarId && newAvatarId !== 'thumbnail') {
-                                    // 迁移图库列表（旧图库继承给新头像）
-                                    if (extension_settings.charGalleryImages && extension_settings.charGalleryImages[oldAvatarId]) {
-                                        extension_settings.charGalleryImages[newAvatarId] = JSON.parse(JSON.stringify(extension_settings.charGalleryImages[oldAvatarId]));
-                                        delete extension_settings.charGalleryImages[oldAvatarId];
-                                    }
-                                    
-                                    // 在更新了原图以后，自动取消此前的图片绑定和裁切记录（全局各个主题均清除）
-                                    // 并确保不复制旧绑定给新ID，强制用户立刻看到并恢复为新替换的原图
-                                    if (extension_settings.avatarThemeBindings) {
-                                        for (const t in extension_settings.avatarThemeBindings) {
-                                            delete extension_settings.avatarThemeBindings[t][oldAvatarId];
-                                        }
-                                    }
-                                    if (extension_settings.avatarThemeCrops) {
-                                        for (const t in extension_settings.avatarThemeCrops) {
-                                            delete extension_settings.avatarThemeCrops[t][oldAvatarId];
-                                        }
-                                    }
-                                    
-                                    // 更新指针避免重复执行
-                                    lastValidAvatarId = newAvatarId;
-
-                                    saveSettingsDebounced();
-                                    applyAvatarCss();
+                                    migrateAvatarData(oldAvatarId, newAvatarId);
                                 }
                                 clearInterval(migrateInterval);
                             }
