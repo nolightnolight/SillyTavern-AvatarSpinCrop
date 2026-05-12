@@ -72,13 +72,11 @@ setInterval(() => {
 
 // ======================== 后端文件操作 ========================
 
-let uploadCounter = 0; // 用于保证四位数字简短且在批量导入时不重复
-
 async function uploadToBackend(base64Data, prefix = "image") {
-    uploadCounter = (uploadCounter + 1) % 10000;
     const b64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-    const suffix = uploadCounter.toString().padStart(4, '0');
-    const filename = `${prefix}_${suffix}`;
+    // 生成6位随机字符以替代顺序数字，避免文件调乱
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const filename = `${prefix}_${randomSuffix}`;
     
     const requestBody = {
         image: b64,
