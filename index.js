@@ -251,18 +251,6 @@ function updatePluginState() {
     const isBtnVisible = !!extension_settings.avatarGalleryBtnVisible;
     applyAvatarCss();
     
-    // 控制指针事件（兼容主题强制设定，始终开启）
-    let pointerStyle = document.getElementById('st-avatar-crop-pointer-events');
-    if (!pointerStyle) {
-        pointerStyle = document.createElement('style');
-        pointerStyle.id = 'st-avatar-crop-pointer-events';
-        document.head.appendChild(pointerStyle);
-    }
-    pointerStyle.textContent = `
-        #chat .mes .mesAvatarWrapper .avatar, 
-        #chat .mes .mesAvatarWrapper .avatar img { pointer-events: auto !important; }
-    `;
-    
     // 动态控制聊天消息按钮的显示与隐藏
     let btnVisibilityStyle = document.getElementById('st-avatar-btn-visibility');
     if (!btnVisibilityStyle) {
