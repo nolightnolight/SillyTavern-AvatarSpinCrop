@@ -145,3 +145,34 @@
 #btn-alt-delete-confirm.active {
     display: flex !important;
 }
+
+/* =========================================
+   新增：恢复头像本身的可点击性 & 旋转组件样式
+========================================= */
+
+/* 强制恢复 ST 新版屏蔽掉的头像鼠标点击事件 */
+.mes .mesAvatarWrapper .avatar {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+/* 裁剪界面自由旋转控制栏 */
+.st-rotation-container {
+    display: flex;
+    align-items: center;
+    margin-top: 15px;
+    gap: 15px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 10px 20px;
+    border-radius: 8px;
+    color: var(--SmartThemeBodyColor);
+}
+
+.st-rotation-slider {
+    flex: 1;
+    cursor: ew-resize;
+    height: 6px;
+    border-radius: 5px;
+    background: #555;
+    outline: none;
+}
