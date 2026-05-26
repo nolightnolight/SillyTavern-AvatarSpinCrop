@@ -567,6 +567,52 @@ async function triggerNativeCropPopup(imgSrc, avatarId, isUser, zoomedDiv) {
             const cropper = cropperImg.cropper;
             cropper.setDragMode('move');
             cropper.options.wheelZoomRatio = 0.05;
+
+            // ==========================================
+            // 新增：向原生剪裁器注入自由旋转滑块
+            // ==========================================
+            const popupBody = document.querySelector('#dialogue_popup .popup-body');
+            if (popupBody && !document.getElementById('st-avatar-rotation-container')) {
+                const rotContainer = document.createElement('div');
+                rotContainer.id = 'st-avatar-rotation-container';
+                rotContainer.className = 'st-rotation-container';
+
+                const icon = document.createElement('i');
+                icon.className = 'fa-solid fa-rotate';
+                icon.title = '自由旋转';
+
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = '-180';
+                slider.max = '180';
+                slider.value = '0';
+                slider.className = 'st-rotation-slider';
+
+                const valDisplay = document.createElement('span');
+                valDisplay.textContent = '0°';
+                valDisplay.style.minWidth = '45px';
+                valDisplay.style.textAlign = 'right';
+                valDisplay.style.fontWeight = 'bold';
+
+                // 监听滑块事件，实时旋转头像
+                slider.addEventListener('input', (e) => {
+                    const deg = parseInt(e.target.value, 10);
+                    valDisplay.textContent = deg + '°';
+                    cropper.rotateTo(deg);
+                });
+
+                rotContainer.appendChild(icon);
+                rotContainer.appendChild(slider);
+                rotContainer.appendChild(valDisplay);
+
+                // 将旋转控制栏插入到裁剪容器（.cropper-container）的下方
+                const cropContainer = document.querySelector('.cropper-container');
+                if (cropContainer && cropContainer.parentNode) {
+                    cropContainer.parentNode.insertBefore(rotContainer, cropContainer.nextSibling);
+                } else {
+                    popupBody.appendChild(rotContainer);
+                }
+            }
         }
     }, 150);
 
